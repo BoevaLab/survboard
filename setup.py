@@ -40,9 +40,9 @@ except FileNotFoundError:
 
 # TODO: Update these values according to the name of the module.
 setup(
-    name="survival-benchmark",
-    version=read_version("survival-benchmark/__init__.py"),  # single place for version
-    description="Installable survival-benchmark package. Modify as needed.",
+    name="survival_benchmark",
+    version=read_version("survival_benchmark/__init__.py"),  # single place for version
+    description="Installable survival_benchmark package. Modify as needed.",
     long_description=open("README.md").read(),
     url="https://github.com/BoevaLab/survival_benchmark",
     author="David Wissel, Nikita Janakarajan",
@@ -50,12 +50,8 @@ setup(
     # the following exclusion is to prevent shipping of tests.
     # if you do include them, add pytest to the required packages.
     packages=find_packages(".", exclude=["*tests*"]),
-    package_data={"survival-benchmark": ["py.typed"]},
-    entry_points="""
-        [console_scripts]
-        salutation=survival-benchmark.complex_module.core:formal_introduction
-    """,
-    scripts=["bin/brief_salutation", "bin/a_shell_script"],
+    package_data={"survival_benchmark": ["py.typed"]},
+    
     extras_require={
         "vcs": VCS_REQUIREMENTS,
         "test": ["pytest", "pytest-cov"],
