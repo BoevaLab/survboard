@@ -40,7 +40,7 @@ LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
         id = "surv.cv_glmnet_custom",
         param_set = ps,
         feature_types = c("logical", "integer", "numeric"),
-        predict_types = c("crank", "lp", "distr"),
+        predict_types = c("distr", "crank", "lp"),
         packages = c("mlr3learners", "glmnet"),
       )
     }
@@ -80,8 +80,14 @@ LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
       newdata <- as_numeric_matrix(ordered_features(task, self))
       pv <- self$param_set$get_values(tags = "predict")
       pv <- rename(pv, "predict.gamma", "gamma")
-      lp <- as.numeric(invoke(predict, model, newx = newdata, type = "link", .args = pv))
-      coefficients <- setNames(extract.coef(model)[, 1], rownames(extract.coef(model)))
+      if (unname(model$nzero[which.min(model$cvlo)]) == 0) {
+        lp <- rep(0, nrow(newdata))
+        coefficients <- rep(0, ncol(newdata))
+      }
+      else {
+        lp <- as.numeric(invoke(predict, model, newx = newdata, type = "link", .args = pv))
+        coefficients <- setNames(extract.coef(model)[, 1], rownames(extract.coef(model)))
+      }
       surv <- get_survival_prediction_linear_cox(
         train_target,
         train_data,

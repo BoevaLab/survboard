@@ -25,7 +25,7 @@ LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
         id = "surv.cv_prioritylasso",
         param_set = ps,
         feature_types = c("logical", "integer", "numeric"),
-        predict_types = c("crank", "lp", "distr")
+        predict_types = c("distr", "crank", "lp")
       )
     }
   ),

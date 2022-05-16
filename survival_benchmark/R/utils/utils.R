@@ -213,8 +213,11 @@ get_survival_prediction_linear_cox <- function(t, delta, f.x_train, f.x_test) {
 get_survival_prediction_linear_cox <- function(train_target, train_data, coefficients, newdata) {
   library(survival)
   library(pec)
-  train_data <- train_data[, which(colnames(train_data) %in% names(coefficients))]
-  newdata <- newdata[, which(colnames(newdata) %in% names(coefficients))]
+  if (!all(coefficients == 0)) {
+    train_data <- train_data[, which(colnames(train_data) %in% names(coefficients))]
+    newdata <- newdata[, which(colnames(newdata) %in% names(coefficients))]
+  }
+
   train_matrix <- cbind(train_target, train_data)
   colnames(train_matrix)[1:2] <- c("OS_days", "OS")
   cox_helper <- coxph(Surv(OS_days, OS) ~ ., x = TRUE, init = coefficients, iter.max = 0, data = data.frame(train_matrix))
