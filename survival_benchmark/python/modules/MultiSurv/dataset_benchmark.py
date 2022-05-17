@@ -2,6 +2,8 @@ import os
 import random
 import csv
 import warnings
+from numpy import dtype
+import numpy as np 
 import pandas as pd 
 
 import torch
@@ -19,7 +21,7 @@ class MultimodalDataset(Dataset):
     def __init__(self, data_path:str,label_path:str=None, modalities:List[str] = ['clinical','gex','mirna','cnv','meth','mut'], dropout:int=0, device:torch.device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')) -> None:
         super().__init__()
 
-        self.data = pd.read_csv(data_path)
+        self.data = pd.read_csv(data_path,index_col=0)
         if label_path:
             self.labels = pd.read_csv(label_path)
         else:
@@ -31,7 +33,8 @@ class MultimodalDataset(Dataset):
         try:
             self.patient_ids = self.data['patient_id']
         except KeyError:
-            print("patient_id not found in data")
+            print("patient_id not found in data, using index")
+            self.patient_ids = self.data.index
 
         
         self.available_modalities = [m for m in modalities if any(self.data.columns.str.contains(m))]
@@ -42,20 +45,22 @@ class MultimodalDataset(Dataset):
         assert all(any(self.data.columns.str.contains(m)) for m in self.available_modalities), "One or more modalities not present in the data"
         # assert all(any(self.data.columns.str.contains(m)) for m in self.available_modalities), "One or more modalities not present in the data"
     
-    def _get_modality(self, modality):
+    def _get_modality(self, modality,patient_id):
         columns_to_subset = self.data.columns[self.data.columns.str.contains(modality)]
-        subset = self.data[columns_to_subset]
+        subset = self.data.loc[patient_id,columns_to_subset]
         
         if modality == 'clinical':
+            # return torch.zeros(1)
+            # TODO: add a transformation here for clinical -> tensor
             return subset.to_numpy()
         elif all(subset.isna()):
             return self._set_missing_modality(subset)
         else:
-            return torch.from_numpy(subset.to_numpy())
+            return torch.from_numpy(np.array(subset,dtype=np.float32))
     
     def _set_missing_modality(self,data,value:float=0.0):
         
-        return torch.from_numpy(data.fillna(value).to_numpy())
+        return torch.from_numpy(np.array(data.fillna(value),dtype=np.float32))
     
     def _drop_data(self,data):
         
@@ -79,7 +84,7 @@ class MultimodalDataset(Dataset):
 
         # Load selected patient's data
         for modality in self.available_modalities:
-            data[modality] = self._get_modality(modality)
+            data[modality] = self._get_modality(modality,patient_id)
 
         # Data dropout
         if self.dropout > 0:
