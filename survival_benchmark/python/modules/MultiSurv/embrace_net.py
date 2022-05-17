@@ -8,7 +8,8 @@ import torch
 
 class EmbraceNet(torch.nn.Module):
     """Embracement modality feature aggregation layer."""
-    def __init__(self, device='cuda:0'):
+
+    def __init__(self, device="cuda:0"):
         """Embracement modality feature aggregation layer.
 
         Note: EmbraceNet needs to deal with mini batch elements differently
@@ -41,13 +42,11 @@ class EmbraceNet(torch.nn.Module):
         return p
 
     def _get_sampling_indices(self, p, c, m):
-        r = torch.multinomial(
-            input=p.transpose(0, 1), num_samples=c, replacement=True)
+        r = torch.multinomial(input=p.transpose(0, 1), num_samples=c, replacement=True)
         r = torch.nn.functional.one_hot(r.long(), num_classes=m)
         r = r.permute(2, 0, 1)
 
         return r
-
 
     def forward(self, x):
         m, b, c = x.size()
