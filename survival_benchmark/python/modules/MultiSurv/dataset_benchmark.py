@@ -1,7 +1,10 @@
+from operator import iconcat
 import os
 import random
 import csv
+from unicodedata import category
 import warnings
+from xml.etree.ElementInclude import include
 from numpy import dtype
 import numpy as np
 import pandas as pd
@@ -14,8 +17,6 @@ from typing import List, Tuple
 # TODO: transform categorical clinical varibales to numeric so can convert to tensor
 # TODO: OR write a custom collate function for batching
 #
-x = 12
-x = 4
 
 
 class MultimodalDataset(Dataset):
@@ -71,8 +72,11 @@ class MultimodalDataset(Dataset):
         else:
             return torch.from_numpy(np.array(subset, dtype=np.float32))
 
-    def _get_clinical_data(self):
-        pass
+    def _clinical_to_tuple(self, clinical):
+        categorical = clinical.select_dtypes(include=[object])
+        continuous = clinical.select_dtypes(include=[int, float])
+
+        return categorical, continuous
 
     def _set_missing_modality(self, data, value: float = 0.0):
 
