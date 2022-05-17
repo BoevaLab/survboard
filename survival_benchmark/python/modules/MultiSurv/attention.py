@@ -5,6 +5,7 @@ import torch
 
 class Attention(torch.nn.Module):
     """Attention mechanism for multimodal representation fusion."""
+
     def __init__(self, size):
         """
         Parameters
