@@ -32,6 +32,18 @@ class MultimodalDataset(Dataset):
         dropout: int = 0,
         device: torch.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
     ) -> None:
+        """Constructor.
+
+        Args:
+            data_path (str): Path to the multimodal merged data in csv format.
+            label_path (str, optional): Path to the file containing event and event time in csv format.
+            Defaults to None.
+            modalities (List[str], optional): List of modalities considered.
+            Must be in the same form as used in naming columns in the merged file.
+            Defaults to ["clinical", "gex", "mirna", "cnv", "meth", "mut"].
+            dropout (int, optional): Modality drop out probability. Defaults to 0.
+            device (_type_, optional): Device on which experiments are run. Defaults to torch.device("cuda:0" if torch.cuda.is_available() else "cpu").
+        """
         super().__init__()
 
         self.data = pd.read_csv(data_path, index_col=0)
@@ -59,7 +71,17 @@ class MultimodalDataset(Dataset):
         ), "One or more modalities not present in the data"
         # assert all(any(self.data.columns.str.contains(m)) for m in self.available_modalities), "One or more modalities not present in the data"
 
-    def _get_modality(self, modality, patient_id):
+    def _get_modality(self, modality: str, patient_id: str) -> torch.Tensor:
+        """Retrieve modality specific features from the merged data file.
+
+        Args:
+            modality (str): Modality to retrieve.
+            patient_id (str): Patient ID for which modality information should be retrieved.
+
+        Returns:
+            torch.Tensor: Tensor of the modality for a given patient. If NA, then returns
+                a tensor of zeroes (default value, can be changed).
+        """
         columns_to_subset = self.data.columns[self.data.columns.str.contains(modality)]
         subset = self.data.loc[patient_id, columns_to_subset]
 
@@ -72,17 +94,44 @@ class MultimodalDataset(Dataset):
         else:
             return torch.from_numpy(np.array(subset, dtype=np.float32))
 
-    def _clinical_to_tuple(self, clinical):
+    def _clinical_to_tuple(self, clinical: pd.DataFrame) -> Tuple:
+        """Breaks down clinical data into continous and categorical variables.
+
+        Args:
+            clinical (pd.DataFrame): Dataframe of clinical data.
+
+        Returns:
+            Tuple: Tuple of dataframes separating categorical from continuous.
+        """
         categorical = clinical.select_dtypes(include=[object])
         continuous = clinical.select_dtypes(include=[int, float])
 
         return categorical, continuous
 
-    def _set_missing_modality(self, data, value: float = 0.0):
+    def _set_missing_modality(self, data: pd.DataFrame, value: float = 0.0) -> torch.Tensor:
+        """Sets values of missing modalities.
+
+        Args:
+            data (pd.DataFrame): Dataframe of patient omics data.
+            value (float, optional): Value to replace NA. Defaults to 0.0.
+
+        Returns:
+            torch.Tensor: Tensor of missing modality features filled with a specified value.
+        """
 
         return torch.from_numpy(np.array(data.fillna(value), dtype=np.float32))
 
-    def _drop_data(self, data):
+    def _drop_data(self, data: dict) -> dict:
+        """Randomly drop a modality based on a dropout probability.
+
+        Args:
+            data (dict): Dictionary wherein keys are modalities and their corresponding
+                values are tensors (for multi-omics) and np.ndarray (for clinical) of that
+                modality for a given patient.
+
+        Returns:
+            dict: Dictionary wherein the chosen modality to be dropped is set to zeroes.
+        """
 
         # for clinical, multisurv only uses continous features for drop out
 
@@ -98,7 +147,15 @@ class MultimodalDataset(Dataset):
 
         return data
 
-    def get_patient_dict(self, patient_id):
+    def get_patient_dict(self, patient_id: str) -> Tuple:
+        """Create dictionary for each patient with modality information.
+
+        Args:
+            patient_id (str): ID of the patient for whom a dictionary is created.
+
+        Returns:
+            Tuple: Tuple of the patient dictionary, time to event, and event observed.
+        """
         time, event = self.labels.loc[patient_id]
         data = {}
 
@@ -114,11 +171,24 @@ class MultimodalDataset(Dataset):
 
         return data, time, event
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Get length of the dataset.
+
+        Returns:
+            int: length of the merged dataset, i.e, total number of patients.
+        """
         return len(self.data)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple:
+        """Samples a patient from the merged dataset.
+
+        Args:
+            idx (int): Index of the patient sample.
+
+        Returns:
+            Tuple: Tuple containing patient dictionary and a second tuple of the event and time.
+        """
         patient_id = self.patient_ids[idx]
         data, time, event = self.get_patient_dict(patient_id)
-        # target = np.array([f"{int(i[0])}|{i[1]}" for i in target])
+        # target = np.array([f"{int(event)}|{time}"])
         return data, (time, event)
