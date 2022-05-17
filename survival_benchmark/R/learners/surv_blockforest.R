@@ -17,7 +17,7 @@ LearnerSurvBlockForest = R6Class("LearnerSurvBlockForest",
                                   always.select.block = p_int(0, 1, default = 0, tags = "train")
                                 )
                                 
-                                ps$values = list(num.threads = 1,
+                                ps$values = list(
                                                  block.method = "BlockForest",
                                                  num.trees = 2000,
                                                  mtry = NULL,
@@ -25,7 +25,6 @@ LearnerSurvBlockForest = R6Class("LearnerSurvBlockForest",
                                                  num.trees.pre = 1500,
                                                  splitrule = "extratrees",
                                                  always.select.block = 0
-                                                 
                                                  )
                                 
                                 super$initialize(
@@ -62,6 +61,7 @@ LearnerSurvBlockForest = R6Class("LearnerSurvBlockForest",
                                   X = task$data(cols = task$feature_names),
                                   y = Surv(targets[1L], targets[2L]),
                                   blocks = blocks,
+                                  num.threads = 1,
                                   .args = pv
                                 )
                               },

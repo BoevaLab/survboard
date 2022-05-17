@@ -42,10 +42,10 @@ LearnerSurvBlockForest = R6Class("LearnerSurvBlockForest",
                             
                             private = list(
                               .train = function(task) {
+                                browser()
                                 library(blockForest)
                                 library(survival)
                                 pv = self$param_set$get_values(tags = "train")
-                                #browser()
                                 targets = task$target_names
                                 
                                 block_order <- c(
@@ -66,6 +66,7 @@ LearnerSurvBlockForest = R6Class("LearnerSurvBlockForest",
                                   X = task$data(cols = task$feature_names),
                                   y = task$truth(),
                                   blocks = blocks,
+                                  num.threads = 1,
                                   .args = pv
                                 )
                               },
