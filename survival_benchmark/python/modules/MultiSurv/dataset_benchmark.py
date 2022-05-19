@@ -1,14 +1,9 @@
-from operator import iconcat
 import os
 import random
-import csv
-from unicodedata import category
-import warnings
-from xml.etree.ElementInclude import include
 from numpy import dtype
 import numpy as np
 import pandas as pd
-
+from sklearn.preprocessing import OrdinalEncoder
 import torch
 from torch.utils.data import Dataset
 
@@ -28,7 +23,7 @@ class MultimodalDataset(Dataset):
         self,
         data_path: str,
         label_path: str = None,
-        modalities: List[str] = ["clinical", "gex", "mirna", "cnv", "meth", "mut"],
+        modalities: List[str] = ["clinical", "gex", "mirna", "cnv", "meth", "mut", "rppa"],
         dropout: int = 0,
         device: torch.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
     ) -> None:
@@ -47,6 +42,7 @@ class MultimodalDataset(Dataset):
         super().__init__()
 
         self.data = pd.read_csv(data_path, index_col=0)
+        self.input_size = {}
         if label_path:
             self.labels = pd.read_csv(label_path)
         else:
@@ -71,6 +67,9 @@ class MultimodalDataset(Dataset):
         ), "One or more modalities not present in the data"
         # assert all(any(self.data.columns.str.contains(m)) for m in self.available_modalities), "One or more modalities not present in the data"
 
+    def get_input_size(self, modality, size):
+        self.input_size.update({modality: size})
+
     def _get_modality(self, modality: str, patient_id: str) -> torch.Tensor:
         """Retrieve modality specific features from the merged data file.
 
@@ -83,11 +82,11 @@ class MultimodalDataset(Dataset):
                 a tensor of zeroes (default value, can be changed).
         """
         columns_to_subset = self.data.columns[self.data.columns.str.contains(modality)]
+        self.get_input_size(modality, len(columns_to_subset))
         subset = self.data.loc[patient_id, columns_to_subset]
 
         if modality == "clinical":
-            # return torch.zeros(1)
-            # TODO: add a transformation here for clinical -> tensor
+            categorical, continuous = self._clinical_to_tuple(subset)
             return subset.to_numpy()
         elif all(subset.isna()):
             return self._set_missing_modality(subset)
@@ -103,8 +102,12 @@ class MultimodalDataset(Dataset):
         Returns:
             Tuple: Tuple of dataframes separating categorical from continuous.
         """
+        cat_encoder = OrdinalEncoder()
         categorical = clinical.select_dtypes(include=[object])
         continuous = clinical.select_dtypes(include=[int, float])
+
+        categorical = torch.tensor(cat_encoder.fit_transform(categorical), dtype=torch.int)
+        continuous = torch.from_numpy(continuous.to_numpy())
 
         return categorical, continuous
 
@@ -132,18 +135,25 @@ class MultimodalDataset(Dataset):
         Returns:
             dict: Dictionary wherein the chosen modality to be dropped is set to zeroes.
         """
-
-        # for clinical, multisurv only uses continous features for drop out
+        available_modalities = []
+        # Check available modalities in current mini-batch
+        for modality, values in data.items():
+            if isinstance(values, (list, tuple)):  # Clinical data
+                values = values[1]  # Use continuous features
+            if len(torch.nonzero(values)) > 0:  # Keep if data is available
+                available_modalities.append(modality)
 
         # Drop data modality
-        n_mod = len(self.available_modalities)
-        modalities_to_drop = self.available_modalities
-        modalities_to_drop.remove("clinical")
+        n_mod = len(available_modalities)
+
         if n_mod > 1:
             if random.random() < self.dropout:
-                drop_modality = random.choice(modalities_to_drop)
-
-                data[drop_modality] = torch.zeros_like(data[drop_modality])
+                drop_modality = random.choice(self.available_modalities)
+                if isinstance(data[drop_modality], (list, tuple)):
+                    # Clinical data
+                    data[drop_modality] = tuple(torch.zeros_like(x) for x in data[drop_modality])
+                else:
+                    data[drop_modality] = torch.zeros_like(data[drop_modality])
 
         return data
 
@@ -162,6 +172,8 @@ class MultimodalDataset(Dataset):
         # Load selected patient's data
         for modality in self.available_modalities:
             data[modality] = self._get_modality(modality, patient_id)
+            if isinstance(data[modality], (list, tuple)):  # Clinical data
+                data[modality] = tuple(x.float() for x in data[modality])
 
         # Data dropout
         if self.dropout > 0:
