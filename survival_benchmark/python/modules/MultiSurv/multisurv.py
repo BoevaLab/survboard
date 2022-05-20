@@ -6,15 +6,15 @@ import torch
 
 from .sub_models import FC, ClinicalNet, CnvNet, WsiNet, Fusion
 
-
+# TODO: add RPPA (use mirna) and Mut (mrna) and input dim make it a param
 class MultiSurv(torch.nn.Module):
     """Deep Learning model for MULTImodal pan-cancer SURVival prediction."""
 
-    def __init__(self, data_modalities, fusion_method="max", n_output_intervals=None, device=None):
+    def __init__(self, data_modalities: dict, fusion_method="max", n_output_intervals=None, device=None):
         super(MultiSurv, self).__init__()
-        self.data_modalities = data_modalities
+        self.data_modalities = data_modalities.keys()
         self.mfs = modality_feature_size = 512
-        valid_mods = ["clinical", "wsi", "mRNA", "miRNA", "DNAm", "CNV"]
+        valid_mods = ["clinical", "gex", "mirna", "meth", "cnv", "mut", "rppa"]
         assert all(mod in valid_mods for mod in data_modalities), f"Accepted input data modalitites are: {valid_mods}"
 
         assert len(data_modalities) > 0, "At least one input must be provided."
@@ -34,42 +34,50 @@ class MultiSurv(torch.nn.Module):
             if fusion_method == "cat":
                 self.num_features += self.mfs
 
-        # WSI patches --------------------------------------------------------#
-        if "wsi" in self.data_modalities:
-            self.wsi_submodel = WsiNet(output_vector_size=self.mfs)
-            self.submodels["wsi"] = self.wsi_submodel
+        # RPPA --------------------------------------------------------#
+        if "rppa" in self.data_modalities:
+            self.rppa_submodel = FC(data_modalities["rppa"], self.mfs, 3)
+            self.submodels["rppa"] = self.rppa_submodel
 
             if fusion_method == "cat":
                 self.num_features += self.mfs
 
         # mRNA ---------------------------------------------------------------#
-        if "mRNA" in self.data_modalities:
-            self.mRNA_submodel = FC(1000, self.mfs, 3)
-            self.submodels["mRNA"] = self.mRNA_submodel
+        if "gex" in self.data_modalities:
+            self.mRNA_submodel = FC(data_modalities["gex"], self.mfs, 3)
+            self.submodels["gex"] = self.gex_submodel
 
             if fusion_method == "cat":
                 self.num_features += self.mfs
 
         # miRNA --------------------------------------------------------------#
-        if "miRNA" in self.data_modalities:
-            self.miRNA_submodel = FC(1881, self.mfs, 3, scaling_factor=2)
-            self.submodels["miRNA"] = self.miRNA_submodel
+        if "mirna" in self.data_modalities:
+            self.mirna_submodel = FC(data_modalities["mirna"], self.mfs, 3, scaling_factor=2)
+            self.submodels["mirna"] = self.mirna_submodel
 
             if fusion_method == "cat":
                 self.num_features += self.mfs
 
         # DNAm ---------------------------------------------------------------#
-        if "DNAm" in self.data_modalities:
-            self.DNAm_submodel = FC(5000, self.mfs, 5, scaling_factor=2)
-            self.submodels["DNAm"] = self.DNAm_submodel
+        if "meth" in self.data_modalities:
+            self.meth_submodel = FC(data_modalities["meth"], self.mfs, 5, scaling_factor=2)
+            self.submodels["meth"] = self.meth_submodel
 
             if fusion_method == "cat":
                 self.num_features += self.mfs
 
-        # DNAm ---------------------------------------------------------------#
-        if "CNV" in self.data_modalities:
-            self.CNV_submodel = CnvNet(output_vector_size=self.mfs)
-            self.submodels["CNV"] = self.CNV_submodel
+        # CNV ---------------------------------------------------------------#
+        if "cnv" in self.data_modalities:
+            self.cnv_submodel = CnvNet(output_vector_size=self.mfs)
+            self.submodels["cnv"] = self.cnv_submodel
+
+            if fusion_method == "cat":
+                self.num_features += self.mfs
+
+        # Mutation ---------------------------------------------------------------#
+        if "mut" in self.data_modalities:
+            self.mut_submodel = CnvNet(output_vector_size=self.mfs)
+            self.submodels["mut"] = self.mut_submodel
 
             if fusion_method == "cat":
                 self.num_features += self.mfs
