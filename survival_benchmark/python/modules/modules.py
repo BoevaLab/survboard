@@ -4,7 +4,7 @@ from skorch.net import NeuralNet
 from sksurv.linear_model.coxph import BreslowEstimator
 from torch import nn
 
-from survival_benchmark.survival_benchmark.python.utils import (
+from survival_benchmark.python.utils.utils import (
     flatten,
     inverse_transform_survival_target,
 )
@@ -35,6 +35,7 @@ class HazardRegression(nn.Module):
                 [
                     nn.Linear(input_dimension, hidden_layer_sizes[0]),
                     nn.ReLU(),
+                    nn.BatchNorm1d(hidden_layer_sizes[0]),
                     nn.Dropout(p_dropout),
                 ]
                 + [
@@ -45,13 +46,14 @@ class HazardRegression(nn.Module):
                             bias=bool(i == (len(hidden_layer_sizes) - 1)),
                         ),
                         nn.ReLU(),
+                        nn.BatchNorm1d(hidden_layer_sizes[i + 1]),
                         nn.Dropout(p_dropout),
                     ]
                     for i in range(len(hidden_layer_sizes) - 1)
                 ]
             )
         )
-        self.hazard = self.hazard[:-2]
+        self.hazard = self.hazard[:-3]
 
     def forward(self, X):
         return self.hazard(X)
@@ -69,6 +71,10 @@ class DeepSurv(nn.Module):
         self.log_hazard = HazardRegression(
             input_dimension, 1, hidden_layer_sizes, activation, p_dropout
         )
+        self.input_dimension = input_dimension
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.activation = activation
+        self.p_dropout = p_dropout
 
     def forward(self, x):
         return self.log_hazard(x)
@@ -81,8 +87,8 @@ class GDP(nn.Module):
         hidden_layer_sizes,
         activation=nn.ReLU,
         p_dropout=0.0,
-        lambdaq=0.001,
-        alpha=0.001,
+        scale=0.001,
+        alpha=0.5,
     ):
         super().__init__()
         self.log_hazard = HazardRegression(
@@ -93,7 +99,10 @@ class GDP(nn.Module):
             p_dropout,
         )
         self.blocks = blocks
-        self.lambdaq = lambdaq
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.activation = activation
+        self.p_dropout = p_dropout
+        self.scale = scale
         self.alpha = alpha
 
     def forward(self, x):
@@ -110,7 +119,7 @@ class CoxPHNet(BaseSurvivalNeuralNet):
         self.train_event = event
         self.partial_fit(X, y, **fit_params)
         self.fit_breslow(
-            self.forward(X, training=False).detach().numpy().ravel(),
+            self.module_.forward(torch.tensor(X)).detach().numpy().ravel(),
             time,
             event,
         )
@@ -136,6 +145,21 @@ class CheerlaEtAlNet(CoxPHNet):
         criterion = self.criterion_(y_pred, y_true, self.module_.M)
         return criterion
 
+    def fit(self, X, y=None, **fit_params):
+        if not self.warm_start or not self.initialized_:
+            self.initialize()
+
+        time, event = inverse_transform_survival_target(y)
+        self.train_time = time
+        self.train_event = event
+        self.partial_fit(X, y, **fit_params)
+        self.fit_breslow(
+            self.module_.forward(torch.tensor(X))[0].detach().numpy().ravel(),
+            time,
+            event,
+        )
+        return self
+
     def forward(self, X, training=False, device="cpu"):
         y_infer = list(self.forward_iter(X, training=training, device=device))[
             0
@@ -143,7 +167,7 @@ class CheerlaEtAlNet(CoxPHNet):
         return y_infer
 
 
-class GDPNet(BaseSurvivalNeuralNet):
+class GDPNet(CoxPHNet):
     def get_loss(self, y_pred, y_true, X=None, training=False):
         criterion = self.criterion_(y_pred, y_true)
         for block in self.module_.blocks:
@@ -159,21 +183,18 @@ class GDPNet(BaseSurvivalNeuralNet):
                 )
             )
 
-        weight_decay = torch.sum(
+        lasso = torch.sum(
             torch.stack(
                 [
-                    torch.square(torch.norm(i, p=2))
+                    torch.norm(i, p=1)
                     for i in self.module_.log_hazard.hazard[1:].parameters()
                 ]
             )
         )
-        print(weight_decay)
-        print(group_lasso)
-        print(criterion)
         return (
             criterion
-            + self.module_.lambdaq * weight_decay
-            + self.module_.alpha * group_lasso
+            + self.module_.scale * (1 - self.module_.alpha) * lasso
+            + self.module_.scale * self.module_.alpha * group_lasso
         )
 
 
@@ -220,6 +241,10 @@ class cheerla_et_al_genomic_encoder(nn.Module):
             nn.Dropout(p_dropout),
             nn.Sigmoid(),
         )
+        self.input_dimension = input_dimension
+        self.encoding_dimension = encoding_dimension
+        self.p_dropout = p_dropout
+        self.highway_cycles = highway_cycles
 
     def forward(self, X):
         return self.encode(X)
@@ -231,6 +256,8 @@ class cheerla_et_al_clinical_encoder(nn.Module):
         self.encode = nn.Sequential(
             nn.Linear(input_dimension, encoding_dimension), nn.Sigmoid()
         )
+        self.input_dimension = input_dimension
+        self.encoding_dimension = encoding_dimension
 
     def forward(self, X):
         return self.encode(X)
@@ -259,8 +286,10 @@ class cheerla_et_al(nn.Module):
             encoding_dimension, 1, [128], nn.Sigmoid, p_dropout
         )
         self.blocks = blocks
-        self.p_multimodal_dropout = p_multimodal_dropout
+        self.encoding_dimension = encoding_dimension
+        self.p_dropout = p_dropout
         self.M = M
+        self.p_multimodal_dropout = p_multimodal_dropout
 
     def multimodal_dropout(self, X, p_dropout, blocks, upweight=True):
         for block in blocks:
@@ -271,22 +300,31 @@ class cheerla_et_al(nn.Module):
                 X[:, torch.tensor(block)][msk, :] = torch.zeros(
                     X[:, torch.tensor(block)][msk, :].shape
                 )
+
+        # Subset out patients for which all modalities are missing
+        msk = torch.where(
+            torch.logical_not(torch.sum(X == 0, axis=1) == X.shape[0])
+        )[0]
+        X = X[msk, :]
         if upweight:
             X = X / (1 - p_dropout)
-        return X
+        return X, msk
 
     def forward(self, X):
         if self.p_multimodal_dropout > 0 and self.training:
-            X = self.multimodal_dropout(
+            X, msk = self.multimodal_dropout(
                 X, self.p_multimodal_dropout, self.blocks
             )
+        else:
+            msk = torch.ones(X.shape[0])
         block_encoded = [
             self.block_encoders[i](X[:, self.blocks[i]])
             for i in range(len(self.blocks))
         ]
         # Only take non-missing and non-dropped modalities into account
+        # if self.training:
         joint = torch.sum(
             torch.stack(block_encoded, axis=2), axis=2
         ) / torch.sum(torch.stack(block_encoded, axis=2) != 0, axis=2)
         hazard = self.hazard(joint)
-        return hazard, block_encoded
+        return hazard, block_encoded, msk.long()
