@@ -1,12 +1,21 @@
+import random
+import os
+
+import pandas as pd
 from collections.abc import Iterable
 
+from skorch.callbacks import Callback
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from skorch.utils import to_numpy
+from skorch.dataset import get_len, ValidSplit
+from sklearn.model_selection import StratifiedKFold
 
 
 def create_risk_matrix(observed_survival_time):
+    observed_survival_time = observed_survival_time.squeeze()
     return (
         (
             torch.outer(observed_survival_time, observed_survival_time)
@@ -15,6 +24,106 @@ def create_risk_matrix(observed_survival_time):
         .long()
         .T
     )
+
+
+class StratifiedSurvivalKFold(StratifiedKFold):
+    """Adapt `StratifiedKFold` to make it usable with our adapted
+    survival target string format.
+
+    For further documentation, please refer to the `StratifiedKFold`
+    documentation, as the only changes made were to adapt the string
+    target format.
+    """
+
+    def _make_test_folds(self, X, y=None):
+        if y is not None and isinstance(y, np.ndarray):
+            # Handle string target by selecting out only the event
+            # to stratify on.
+            if not y.dtype == np.dtype("float32"):
+                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(
+                    np.float32
+                )
+        return super()._make_test_folds(X=X, y=y)
+
+    def _iter_test_masks(self, X, y=None, groups=None):
+        if y is not None and isinstance(y, np.ndarray):
+            # Handle string target by selecting out only the event
+            # to stratify on.
+            if not y.dtype == np.dtype("float32"):
+                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(
+                    np.float32
+                )
+        return super()._iter_test_masks(X, y=y)
+
+    def split(self, X, y, groups=None):
+        return super().split(X=X, y=y, groups=groups)
+
+
+class StratifiedSkorchSurvivalSplit(ValidSplit):
+    """Adapt `ValidSplit` to make it usable with our adapted
+    survival target string format.
+
+    For further documentation, please refer to the `ValidSplit`
+    documentation, as the only changes made were to adapt the string
+    target format.
+    """
+
+    def __call__(self, dataset, y=None, groups=None):
+        if y is not None:
+            # Handle string target by selecting out only the event
+            # to stratify on.
+            y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
+
+        bad_y_error = ValueError(
+            "Stratified CV requires explicitly passing a suitable y."
+        )
+
+        if (y is None) and self.stratified:
+            raise bad_y_error
+
+        cv = self.check_cv(y)
+        if self.stratified and not self._is_stratified(cv):
+            raise bad_y_error
+
+        # pylint: disable=invalid-name
+        len_dataset = get_len(dataset)
+        if y is not None:
+            len_y = get_len(y)
+            if len_dataset != len_y:
+                raise ValueError(
+                    "Cannot perform a CV split if dataset and y "
+                    "have different lengths."
+                )
+
+        args = (np.arange(len_dataset),)
+        if self._is_stratified(cv):
+            args = args + (to_numpy(y),)
+
+        idx_train, idx_valid = next(iter(cv.split(*args, groups=groups)))
+        dataset_train = torch.utils.data.Subset(dataset, idx_train)
+        dataset_valid = torch.utils.data.Subset(dataset, idx_valid)
+        return dataset_train, dataset_valid
+
+
+# Adapted from https://github.com/pytorch/pytorch/issues/7068.
+def seed_torch(seed=42):
+    """Sets all seeds within torch and adjacent libraries.
+
+    Args:
+        seed: Random seed to be used by the seeding functions.
+
+    Returns:
+        None
+    """
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    return None
 
 
 # Source: https://stackoverflow.com/questions/2158395/flatten-an-irregular-list-of-lists
@@ -41,22 +150,50 @@ def inverse_transform_survival_function(y):
     return np.vstack([np.array(i.rsplit("|")) for i in y])
 
 
+def negative_partial_log_likelihood_loss(
+    y,
+    predicted_log_hazard_ratio,
+):
+    (
+        observed_survival_time,
+        observed_event_indicator,
+    ) = inverse_transform_survival_target(y)
+    observed_survival_time = torch.tensor(observed_survival_time)
+    observed_event_indicator = torch.tensor(observed_event_indicator)
+    if not isinstance(predicted_log_hazard_ratio, torch.Tensor):
+        predicted_log_hazard_ratio = torch.tensor(predicted_log_hazard_ratio)
+    return negative_partial_log_likelihood(
+        predicted_log_hazard_ratio,
+        observed_survival_time,
+        observed_event_indicator,
+    )
+
+
 def negative_partial_log_likelihood(
     predicted_log_hazard_ratio,
     observed_survival_time,
     observed_event_indicator,
 ):
     risk_matrix = create_risk_matrix(observed_survival_time)
-    return torch.negative(
-        torch.sum(
-            (observed_event_indicator == 1)
-            * (
-                predicted_log_hazard_ratio
-                - torch.log(
-                    torch.sum(
-                        risk_matrix * torch.exp(predicted_log_hazard_ratio),
-                        axis=1,
-                    )
+    # print(torch.reshape(observed_event_indicator.float(), (0, 1)).shape)
+    # print(predicted_log_hazard_ratio.shape)
+    # print(
+    #                 torch.log(torch.sum(
+    #                     risk_matrix * torch.exp(predicted_log_hazard_ratio),
+    #                     axis=1,
+    #                 )).shape)
+
+    # diff = predicted_log_hazard_ratio -torch.log(risk_matrix.float().mm(torch.exp(predicted_log_hazard_ratio)))
+    # print(torch.transpose(diff, 0, 1).mm(observed_event_indicator))
+    return -torch.sum(
+        observed_event_indicator.float().squeeze()
+        * (
+            predicted_log_hazard_ratio.squeeze()
+            - torch.log(
+                torch.sum(
+                    risk_matrix.float()
+                    * torch.exp(predicted_log_hazard_ratio.squeeze()),
+                    axis=1,
                 )
             )
         )
@@ -107,9 +244,15 @@ class cheerla_et_al_criterion(nn.Module):
         time, event = inverse_transform_survival_target(target)
         log_hazard_ratio = prediction[0]
         encoded_blocks = prediction[1]
+        msk = prediction[2]
         cox_loss = negative_partial_log_likelihood(
-            log_hazard_ratio, torch.tensor(time), torch.tensor(event)
+            # Take out masked patients for which all modalties were missing
+            log_hazard_ratio,
+            torch.tensor(time)[msk],
+            torch.tensor(event)[msk],
         )
+        # Not necessary to exclude masked patients since they were already
+        # excluded in the forward.
         similarity_loss_ = similarity_loss(encoded_blocks, M)
         return cox_loss + similarity_loss_
 
@@ -122,3 +265,39 @@ class cox_criterion(nn.Module):
             log_hazard_ratio, torch.tensor(time), torch.tensor(event)
         )
         return cox_loss
+
+
+def get_blocks(feature_names):
+    column_types = (
+        pd.Series(feature_names).str.rsplit("_").apply(lambda x: x[0]).values
+    )
+    return [
+        np.where(
+            modality
+            == pd.Series(feature_names)
+            .str.rsplit("_")
+            .apply(lambda x: x[0])
+            .values
+        )[0].tolist()
+        for modality in [
+            q
+            for q in ["clinical", "gex", "cnv", "rppa", "mirna", "mut", "meth"]
+            if q in np.unique(column_types)
+        ]
+    ]
+
+
+# Adapted from https://github.com/skorch-dev/skorch/issues/280
+class FixRandomSeed(Callback):
+    """Ensure reproducibility within skorch by setting all seeds.
+
+    Attributes:
+        seed: Random seed to be used by the seeding functions.
+
+    """
+
+    def __init__(self, seed=42):
+        self.seed = seed
+
+    def initialize(self):
+        seed_torch(self.seed)
