@@ -148,7 +148,7 @@ def main():
                             module=cheerla_et_al,
                             module__blocks=get_blocks(X_train.columns),
                             module__encoding_dimension=512,  # As in the paper
-                            module__p_multimodal_dropout=0.25,  # As in the paper
+                            module__p_multimodal_dropout=0.0,  # As in the paper
                             criterion=cheerla_et_al_criterion,
                             train_split=StratifiedSkorchSurvivalSplit(
                                 5, stratified=True
@@ -233,7 +233,7 @@ def main():
                             module=cheerla_et_al,
                             module__blocks=get_blocks(X_train.columns),
                             module__encoding_dimension=512,  # As in the paper
-                            module__p_multimodal_dropout=0.25,  # As in the paper
+                            module__p_multimodal_dropout=0.0,  # As in the paper
                             criterion=cheerla_et_al_criterion,
                             max_epochs=100,
                             train_split=StratifiedSkorchSurvivalSplit(
