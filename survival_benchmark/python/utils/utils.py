@@ -178,6 +178,7 @@ def negative_partial_log_likelihood(
 ):
     observed_event_indicator = observed_event_indicator.to(device)
     observed_survival_time = observed_survival_time.to(device)
+    predicted_log_hazard_ratio = predicted_log_hazard_ratio.to(device)
     risk_matrix = create_risk_matrix(observed_survival_time).to(device)
     # print(torch.reshape(observed_event_indicator.float(), (0, 1)).shape)
     # print(predicted_log_hazard_ratio.shape)
