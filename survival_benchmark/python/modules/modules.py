@@ -251,8 +251,9 @@ class cheerla_et_al_genomic_encoder(nn.Module):
 
 
 class cheerla_et_al_clinical_encoder(nn.Module):
-    def __init__(self, input_dimension, encoding_dimension=512) -> None:
+    def __init__(self, input_dimension, encoding_dimension=512, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")) -> None:
         super().__init__()
+        self.device = device
         self.encode = nn.Sequential(
             nn.Linear(input_dimension, encoding_dimension), nn.Sigmoid()
         )
@@ -260,7 +261,7 @@ class cheerla_et_al_clinical_encoder(nn.Module):
         self.encoding_dimension = encoding_dimension
 
     def forward(self, X):
-        return self.encode(X)
+        return self.encode(X.to(self.device))
 
 
 class cheerla_et_al(nn.Module):
