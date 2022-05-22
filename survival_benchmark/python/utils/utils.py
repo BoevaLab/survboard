@@ -14,6 +14,7 @@ from skorch.dataset import get_len, ValidSplit
 from sklearn.model_selection import StratifiedKFold
 
 
+
 def create_risk_matrix(observed_survival_time):
     observed_survival_time = observed_survival_time.squeeze()
     return (
@@ -173,8 +174,11 @@ def negative_partial_log_likelihood(
     predicted_log_hazard_ratio,
     observed_survival_time,
     observed_event_indicator,
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ):
-    risk_matrix = create_risk_matrix(observed_survival_time)
+    observed_event_indicator = observed_event_indicator.to(device)
+    observed_survival_time = observed_survival_time.to(device)
+    risk_matrix = create_risk_matrix(observed_survival_time).to(device)
     # print(torch.reshape(observed_event_indicator.float(), (0, 1)).shape)
     # print(predicted_log_hazard_ratio.shape)
     # print(
@@ -210,17 +214,17 @@ def has_missing_modality(encoded_blocks, patient, matched_patient, modality):
     )
 
 
-def similarity_loss(encoded_blocks, M):
+def similarity_loss(encoded_blocks, M, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     cos = nn.CosineSimilarity(dim=0, eps=1e-08)
-    loss = torch.tensor(0.0)
+    loss = torch.tensor(0.0, device=device)
     n_patients = encoded_blocks[0].shape[0]
     for patient in range(n_patients):
         for matched_patient in range(n_patients):
             if patient == matched_patient:
                 continue
             else:
-                patient_similarity = torch.tensor(0.0)
-                matched_patient_similarity = torch.tensor(0.0)
+                patient_similarity = torch.tensor(0.0, device=device)
+                matched_patient_similarity = torch.tensor(0.0, device=device)
                 for modality in range(len(encoded_blocks)):
                     if has_missing_modality(
                         encoded_blocks, patient, matched_patient, modality
