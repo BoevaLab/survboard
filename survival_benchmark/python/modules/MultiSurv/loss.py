@@ -22,7 +22,7 @@ class Loss(torch.nn.Module):
         out = torch.zeros(len(time), n_intervals * 2)
 
         for i, (t, e) in enumerate(zip(time, event)):
-            t = torch.round(t * 365)  # From years to days
+            # t = torch.round(t * 365)  # From years to days
 
             if e:  # if not censored
                 # survived time intervals where time >= upper limit
@@ -53,6 +53,8 @@ class Loss(torch.nn.Module):
 
     def _neg_log_likelihood(self, risk, label, break_list, reduction="mean"):
         n_intervals = len(break_list) - 1
+        print(label[:, 0:n_intervals].shape)
+        print(risk.shape)
         all_patients = 1.0 + label[:, 0:n_intervals] * (risk - 1.0)
         noncensored = 1.0 - label[:, n_intervals : 2 * n_intervals] * risk
 
