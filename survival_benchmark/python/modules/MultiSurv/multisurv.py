@@ -1,18 +1,51 @@
 """Deep Learning-based multimodal data model for survival prediction."""
 
 import warnings
-
+import math
+from skorch import NeuralNet
 import torch
 
-from .sub_models import FC, ClinicalNet, CnvNet, WsiNet, Fusion
+from survival_benchmark.python.utils.utils import inverse_transform_survival_target
+from survival_benchmark.python.modules.modules import BaseSurvivalNeuralNet
+from .sub_models import FC, ClinicalNet, CnvNet, Fusion
 
-# TODO: add RPPA (use mirna) and Mut (mrna) and input dim make it a param
+# TODO: in the modules class, add a predict and predict_survival_function funcs
+
+
+class MultiSurvModel(NeuralNet):
+    # def fit(self, X, y=None, **fit_params):
+    #     time, event = inverse_transform_survival_target(y)
+    #     pass
+
+    # def predict(self):
+    #     pass
+
+    def get_loss(self, y_pred, y_true, X=None, training=False):
+        modality_features, risk = y_pred
+        # time, event = inverse_transform_survival_target(y_true)
+        time, event = y_true
+
+        loss = self.criterion_(
+            risk=risk,
+            times=time,
+            events=event,
+            breaks=self.module_.output_intervals.double().to(self.device),
+            device=self.device,
+        )
+        return loss
+
+    def predict_survival_function(self):
+        pass
+
+
 class MultiSurv(torch.nn.Module):
     """Deep Learning model for MULTImodal pan-cancer SURVival prediction."""
 
-    def __init__(self, data_modalities: dict, fusion_method="max", n_output_intervals=None, device=None):
+    def __init__(self, data_modalities: dict, fusion_method="max", output_intervals=None, device=None):
         super(MultiSurv, self).__init__()
         self.data_modalities = data_modalities.keys()
+        self.output_intervals = output_intervals
+        n_output_intervals = len(output_intervals) - 1
         self.mfs = modality_feature_size = 512
         valid_mods = ["clinical", "gex", "mirna", "meth", "cnv", "mut", "rppa"]
         assert all(mod in valid_mods for mod in data_modalities), f"Accepted input data modalitites are: {valid_mods}"
@@ -28,7 +61,13 @@ class MultiSurv(torch.nn.Module):
 
         # Clinical -----------------------------------------------------------#
         if "clinical" in self.data_modalities:
-            self.clinical_submodel = ClinicalNet(output_vector_size=self.mfs)
+            embed_dims = list(map(lambda x: (x, int(math.ceil(x / 2))), data_modalities["clinical"]["categorical"]))
+
+            self.clinical_submodel = ClinicalNet(
+                output_vector_size=self.mfs,
+                embedding_dims=embed_dims,
+                n_continuous=data_modalities["clinical"]["continuous"],
+            )
             self.submodels["clinical"] = self.clinical_submodel
 
             if fusion_method == "cat":
@@ -44,7 +83,7 @@ class MultiSurv(torch.nn.Module):
 
         # mRNA ---------------------------------------------------------------#
         if "gex" in self.data_modalities:
-            self.mRNA_submodel = FC(data_modalities["gex"], self.mfs, 3)
+            self.gex_submodel = FC(data_modalities["gex"], self.mfs, 3)
             self.submodels["gex"] = self.gex_submodel
 
             if fusion_method == "cat":
@@ -68,7 +107,10 @@ class MultiSurv(torch.nn.Module):
 
         # CNV ---------------------------------------------------------------#
         if "cnv" in self.data_modalities:
-            self.cnv_submodel = CnvNet(output_vector_size=self.mfs)
+            n_cat = data_modalities["cnv"]["categories"]
+            n_embed = int(math.ceil(n_cat / 2)) * data_modalities["cnv"]["length"]
+            cnv_embed_dim = [(n_cat, int(math.ceil(n_cat / 2)))] * data_modalities["cnv"]["length"]
+            self.cnv_submodel = CnvNet(output_vector_size=self.mfs, embedding_dims=cnv_embed_dim, n_embeddings=n_embed)
             self.submodels["cnv"] = self.cnv_submodel
 
             if fusion_method == "cat":
@@ -99,12 +141,18 @@ class MultiSurv(torch.nn.Module):
             torch.nn.Linear(in_features=n_neurons, out_features=n_output_intervals), torch.nn.Sigmoid()
         )
 
-    def forward(self, x):
+    def forward(self, **kwargs):
+
         multimodal_features = tuple()
 
         # Run data through modality sub-models (generate feature vectors) ----#
-        for modality in x:
-            multimodal_features += (self.submodels[modality](x[modality]),)
+        # for modality in self.data_modalities:
+        #     if modality == "clinical":
+        #         continue
+        #     multimodal_features += (self.submodels[modality](**kwargs[modality]),)
+
+        for modality in self.data_modalities:
+            multimodal_features += (self.submodels[modality](kwargs[modality]),)
 
         # Feature fusion/aggregation -----------------------------------------#
         if len(multimodal_features) > 1:
