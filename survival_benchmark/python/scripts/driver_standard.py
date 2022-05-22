@@ -5,27 +5,24 @@ import numpy as np
 import pandas as pd
 import torch
 from hyperband import HyperbandSearchCV
+from scipy.stats import uniform
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import make_scorer
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from skorch.callbacks import EarlyStopping, LRScheduler
 from sklearn.utils.fixes import loguniform
-from scipy.stats import uniform
+from skorch.callbacks import EarlyStopping, LRScheduler
 
 from survival_benchmark.python.modules.modules import (
     GDP,
-    CheerlaEtAlNet,
     CoxPHNet,
     DeepSurv,
     GDPNet,
-    cheerla_et_al,
 )
 from survival_benchmark.python.utils.utils import (
     FixRandomSeed,
     StratifiedSkorchSurvivalSplit,
     StratifiedSurvivalKFold,
-    cheerla_et_al_criterion,
     cox_criterion,
     get_blocks,
     negative_partial_log_likelihood_loss,
@@ -33,15 +30,9 @@ from survival_benchmark.python.utils.utils import (
     transform_survival_target,
 )
 
-model_mapping = ["cheerlaetal", "deepsurv", "gdp"]
+model_mapping = ["deepsurv", "gdp"]
 
 param_spaces = [
-    {
-        "lr": loguniform(0.01, 0.0001),
-        "module__p_dropout": uniform(0.0, 0.5),
-        "optimizer__weight_decay": loguniform(0.01, 0.0001),
-        "batch_size": [64, 128, 256],
-    },
     {
         "lr": loguniform(0.01, 0.0001),
         "module__p_dropout": uniform(0.0, 0.5),
@@ -67,7 +58,7 @@ def main():
         greater_is_better=False,
     )
     for project in ["TCGA", "TARGET", "ICGC"]:
-        for ix in range(3):
+        for ix in range(2):
             print(f"Starting model: {model_mapping[ix]}")
             for cancer in config[f"{project.tolower()}_cancers"]:
                 print(f"Starting cancer: {cancer}")
@@ -144,29 +135,6 @@ def main():
                     X_train = X_train.loc[:, msk]
                     X_test = X_test.loc[:, msk]
                     if ix == 0:
-                        net = CheerlaEtAlNet(
-                            module=cheerla_et_al,
-                            module__blocks=get_blocks(X_train.columns),
-                            module__encoding_dimension=512,  # As in the paper
-                            module__p_multimodal_dropout=0.0,  # As in the paper
-                            criterion=cheerla_et_al_criterion,
-                            train_split=StratifiedSkorchSurvivalSplit(
-                                5, stratified=True
-                            ),
-                            optimizer=torch.optim.AdamW,
-                            verbose=0,
-                            callbacks=[
-                                ("seed", FixRandomSeed(config["seed"])),
-                                (
-                                    "sched",
-                                    LRScheduler(
-                                        torch.optim.lr_scheduler.ReduceLROnPlateau,
-                                        monitor="valid_loss",
-                                    ),
-                                ),
-                            ],
-                        )
-                    elif ix == 1:
                         net = CoxPHNet(
                             module=DeepSurv,
                             module__input_dimension=X_train.shape[1],
@@ -191,7 +159,7 @@ def main():
                                 ),
                             ],
                         )
-                    elif ix == 2:
+                    elif ix == 1:
                         net = GDPNet(
                             module=GDP,
                             module__hidden_layer_sizes=[200, 100],
@@ -229,37 +197,6 @@ def main():
                         y[train_ix.astype(int)].astype(str),
                     )
                     if ix == 0:
-                        net = CheerlaEtAlNet(
-                            module=cheerla_et_al,
-                            module__blocks=get_blocks(X_train.columns),
-                            module__encoding_dimension=512,  # As in the paper
-                            module__p_multimodal_dropout=0.0,  # As in the paper
-                            criterion=cheerla_et_al_criterion,
-                            max_epochs=100,
-                            train_split=StratifiedSkorchSurvivalSplit(
-                                5, stratified=True
-                            ),
-                            verbose=1,
-                            callbacks=[
-                                ("seed", FixRandomSeed(config["seed"])),
-                                (
-                                    "sched",
-                                    LRScheduler(
-                                        torch.optim.lr_scheduler.ReduceLROnPlateau,
-                                        monitor="valid_loss",
-                                    ),
-                                ),
-                                (
-                                    "es",
-                                    EarlyStopping(
-                                        patience=10,
-                                        monitor="valid_loss",
-                                        load_best=True,
-                                    ),
-                                ),
-                            ],
-                        )
-                    elif ix == 1:
                         net = CoxPHNet(
                             module=DeepSurv,
                             module__input_dimension=X_train.shape[1],
@@ -292,7 +229,7 @@ def main():
                                 ),
                             ],
                         )
-                    elif ix == 2:
+                    elif ix == 1:
                         net = GDPNet(
                             module=GDP,
                             module__hidden_layer_sizes=[200, 100],
