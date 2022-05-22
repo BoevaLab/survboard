@@ -23,11 +23,17 @@ class BasicModel(ABC):
         """
         self.param = param
         self.gpu_ids = param.gpu_ids
-        self.device = torch.device('cuda:{}'.format(self.gpu_ids[0])) if self.gpu_ids else torch.device('cpu')  # get device name: CPU or GPU
-        self.save_dir = os.path.join(param.checkpoints_dir, param.experiment_name)  # save all the checkpoints to save_dir, and this is where to load the models
-        self.load_net_dir = os.path.join(param.checkpoints_dir, param.experiment_to_load)  # load pretrained networks from certain experiment folder
+        self.device = (
+            torch.device("cuda:{}".format(self.gpu_ids[0])) if self.gpu_ids else torch.device("cpu")
+        )  # get device name: CPU or GPU
+        self.save_dir = os.path.join(
+            param.checkpoints_dir, param.experiment_name
+        )  # save all the checkpoints to save_dir, and this is where to load the models
+        self.load_net_dir = os.path.join(
+            param.checkpoints_dir, param.experiment_to_load
+        )  # load pretrained networks from certain experiment folder
         self.isTrain = param.isTrain
-        self.phase = 'p1'
+        self.phase = "p1"
         self.epoch = 1
         self.iter = 0
 
@@ -110,37 +116,36 @@ class BasicModel(ABC):
         Update learning rates for all the networks
         Called at the end of each epoch
         """
-        lr = self.optimizers[0].param_groups[0]['lr']
+        lr = self.optimizers[0].param_groups[0]["lr"]
 
         for scheduler in self.schedulers:
-            if self.param.lr_policy == 'plateau':
+            if self.param.lr_policy == "plateau":
                 scheduler.step(self.plateau_metric)
             else:
                 scheduler.step()
 
         return lr
 
-
     def print_networks(self, param):
         """
         Print the total number of parameters in the network and network architecture if detail is true
         Save the networks information to the disk
         """
-        message = '\n----------------------Networks Information----------------------'
+        message = "\n----------------------Networks Information----------------------"
         for model_name in self.model_names:
             if isinstance(model_name, str):
-                net = getattr(self, 'net' + model_name)
+                net = getattr(self, "net" + model_name)
                 num_params = 0
                 for parameter in net.parameters():
                     num_params += parameter.numel()
                 if param.detail:
-                    message += '\n' + str(net)
-                message += '\n[Network {:s}] Total number of parameters : {:.3f} M'.format(model_name, num_params / 1e6)
-        message += '\n----------------------------------------------------------------\n'
+                    message += "\n" + str(net)
+                message += "\n[Network {:s}] Total number of parameters : {:.3f} M".format(model_name, num_params / 1e6)
+        message += "\n----------------------------------------------------------------\n"
 
         # Save the networks information to the disk
-        net_info_filename = os.path.join(param.checkpoints_dir, param.experiment_name, 'net_info.txt')
-        with open(net_info_filename, 'w') as log_file:
+        net_info_filename = os.path.join(param.checkpoints_dir, param.experiment_name, "net_info.txt")
+        with open(net_info_filename, "w") as log_file:
             log_file.write(message)
 
         print(message)
@@ -154,10 +159,10 @@ class BasicModel(ABC):
         """
         for name in self.model_names:
             if isinstance(name, str):
-                save_filename = '{:s}_net_{:s}.pth'.format(epoch, name)
+                save_filename = "{:s}_net_{:s}.pth".format(epoch, name)
                 save_path = os.path.join(self.save_dir, save_filename)
                 # Use the str to get the attribute aka the network (self.netG / self.netD)
-                net = getattr(self, 'net' + name)
+                net = getattr(self, "net" + name)
                 # If we use multi GPUs and apply the data parallel
                 if len(self.gpu_ids) > 0 and torch.cuda.is_available():
                     torch.save(net.module.cpu().state_dict(), save_path)
@@ -174,16 +179,16 @@ class BasicModel(ABC):
         """
         for model_name in self.model_names:
             if isinstance(model_name, str):
-                load_filename = '{:s}_net_{:s}.pth'.format(epoch, model_name)
+                load_filename = "{:s}_net_{:s}.pth".format(epoch, model_name)
                 load_path = os.path.join(self.load_net_dir, load_filename)
                 # Use the str to get the attribute aka the network (self.netG / self.netD)
-                net = getattr(self, 'net' + model_name)
+                net = getattr(self, "net" + model_name)
                 # If we use multi GPUs and apply the data parallel
                 if isinstance(net, torch.nn.DataParallel):
                     net = net.module
-                print('Loading the model from %s' % load_path)
+                print("Loading the model from %s" % load_path)
                 state_dict = torch.load(load_path, map_location=self.device)
-                if hasattr(state_dict, '_metadata'):
+                if hasattr(state_dict, "_metadata"):
                     del state_dict._metadata
 
                 net.load_state_dict(state_dict)
@@ -195,7 +200,7 @@ class BasicModel(ABC):
         for model_name in self.model_names:
             if isinstance(model_name, str):
                 # Use the str to get the attribute aka the network (self.netXXX)
-                net = getattr(self, 'net' + model_name)
+                net = getattr(self, "net" + model_name)
                 net.train()
 
     def set_eval(self):
@@ -205,7 +210,7 @@ class BasicModel(ABC):
         for model_name in self.model_names:
             if isinstance(model_name, str):
                 # Use the str to get the attribute aka the network (self.netG / self.netD)
-                net = getattr(self, 'net' + model_name)
+                net = getattr(self, "net" + model_name)
                 net.eval()
 
     def test(self):
@@ -222,15 +227,26 @@ class BasicModel(ABC):
         """
         output_dict = OrderedDict()
         output_names = []
-        if self.param.downstream_task == 'classification':
-            output_names = ['index', 'y_true', 'y_pred', 'y_prob']
-        elif self.param.downstream_task == 'regression':
-            output_names = ['index', 'y_true', 'y_pred']
-        elif self.param.downstream_task == 'survival':
-            output_names = ['index', 'y_true_E', 'y_true_T', 'survival', 'risk', 'y_out']
-        elif self.param.downstream_task == 'multitask' or self.param.downstream_task == 'alltask':
-            output_names = ['index', 'y_true_E', 'y_true_T', 'survival', 'risk', 'y_out_sur', 'y_true_cla', 'y_pred_cla',
-                            'y_prob_cla', 'y_true_reg', 'y_pred_reg']
+        if self.param.downstream_task == "classification":
+            output_names = ["index", "y_true", "y_pred", "y_prob"]
+        elif self.param.downstream_task == "regression":
+            output_names = ["index", "y_true", "y_pred"]
+        elif self.param.downstream_task == "survival":
+            output_names = ["index", "y_true_E", "y_true_T", "survival", "risk", "y_out"]
+        elif self.param.downstream_task == "multitask" or self.param.downstream_task == "alltask":
+            output_names = [
+                "index",
+                "y_true_E",
+                "y_true_T",
+                "survival",
+                "risk",
+                "y_out_sur",
+                "y_true_cla",
+                "y_pred_cla",
+                "y_prob_cla",
+                "y_true_reg",
+                "y_pred_reg",
+            ]
         for name in output_names:
             output_dict[name] = None
 
@@ -242,22 +258,33 @@ class BasicModel(ABC):
         """
         down_output = self.get_down_output()
         output_names = []
-        if self.param.downstream_task == 'classification':
-            output_names = ['index', 'y_true', 'y_pred', 'y_prob']
-        elif self.param.downstream_task == 'regression':
-            output_names = ['index', 'y_true', 'y_pred']
-        elif self.param.downstream_task == 'survival':
-            output_names = ['index', 'y_true_E', 'y_true_T', 'survival', 'risk', 'y_out']
-        elif self.param.downstream_task == 'multitask' or self.param.downstream_task == 'alltask':
-            output_names = ['index', 'y_true_E', 'y_true_T', 'survival', 'risk', 'y_out_sur', 'y_true_cla',
-                            'y_pred_cla', 'y_prob_cla', 'y_true_reg', 'y_pred_reg']
+        if self.param.downstream_task == "classification":
+            output_names = ["index", "y_true", "y_pred", "y_prob"]
+        elif self.param.downstream_task == "regression":
+            output_names = ["index", "y_true", "y_pred"]
+        elif self.param.downstream_task == "survival":
+            output_names = ["index", "y_true_E", "y_true_T", "survival", "risk", "y_out"]
+        elif self.param.downstream_task == "multitask" or self.param.downstream_task == "alltask":
+            output_names = [
+                "index",
+                "y_true_E",
+                "y_true_T",
+                "survival",
+                "risk",
+                "y_out_sur",
+                "y_true_cla",
+                "y_pred_cla",
+                "y_prob_cla",
+                "y_true_reg",
+                "y_pred_reg",
+            ]
 
         for name in output_names:
             if output_dict[name] is None:
                 output_dict[name] = down_output[name]
             else:
-                if self.param.downstream_task == 'alltask' and name in ['y_true_cla', 'y_pred_cla', 'y_prob_cla']:
-                    for i in range(self.param.task_num-2):
+                if self.param.downstream_task == "alltask" and name in ["y_true_cla", "y_pred_cla", "y_prob_cla"]:
+                    for i in range(self.param.task_num - 2):
                         output_dict[name][i] = torch.cat((output_dict[name][i], down_output[name][i]))
                 else:
                     output_dict[name] = torch.cat((output_dict[name], down_output[name]))
@@ -279,10 +306,10 @@ class BasicModel(ABC):
         """
         for name in self.loss_names:
             if isinstance(name, str):
-                if self.param.reduction == 'sum':
-                    losses_dict[name].append(float(getattr(self, 'loss_' + name))/actual_batch_size)
-                elif self.param.reduction == 'mean':
-                    losses_dict[name].append(float(getattr(self, 'loss_' + name)))
+                if self.param.reduction == "sum":
+                    losses_dict[name].append(float(getattr(self, "loss_" + name)) / actual_batch_size)
+                elif self.param.reduction == "mean":
+                    losses_dict[name].append(float(getattr(self, "loss_" + name)))
 
     def init_metrics_dict(self):
         """
@@ -300,7 +327,7 @@ class BasicModel(ABC):
         """
         for name in self.metric_names:
             if isinstance(name, str):
-                metrics_dict[name] = getattr(self, 'metric_' + name)
+                metrics_dict[name] = getattr(self, "metric_" + name)
 
     def init_log_dict(self):
         """
@@ -328,8 +355,8 @@ class BasicModel(ABC):
         initialize and return an empty latent space array and an empty index array
         """
         latent_dict = OrderedDict()
-        latent_dict['index'] = np.zeros(shape=[0])
-        latent_dict['latent'] = np.zeros(shape=[0, self.param.latent_space_dim])
+        latent_dict["index"] = np.zeros(shape=[0])
+        latent_dict["latent"] = np.zeros(shape=[0, self.param.latent_space_dim])
         return latent_dict
 
     def update_latent_dict(self, latent_dict):
@@ -339,7 +366,7 @@ class BasicModel(ABC):
         """
         with torch.no_grad():
             current_latent_array = self.latent.cpu().numpy()
-            latent_dict['latent'] = np.concatenate((latent_dict['latent'], current_latent_array))
+            latent_dict["latent"] = np.concatenate((latent_dict["latent"], current_latent_array))
             current_index_array = self.data_index.cpu().numpy()
-            latent_dict['index'] = np.concatenate((latent_dict['index'], current_index_array))
+            latent_dict["index"] = np.concatenate((latent_dict["index"], current_index_array))
             return latent_dict
