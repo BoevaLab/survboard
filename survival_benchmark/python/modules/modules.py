@@ -154,7 +154,7 @@ class CheerlaEtAlNet(CoxPHNet):
         self.train_event = event
         self.partial_fit(X, y, **fit_params)
         self.fit_breslow(
-            self.module_.forward(torch.tensor(X))[0].detach().numpy().ravel(),
+            self.module_.forward(torch.tensor(X))[0].detach().cpu().numpy().ravel(),
             time,
             event,
         )
@@ -233,6 +233,7 @@ class cheerla_et_al_genomic_encoder(nn.Module):
         encoding_dimension,
         p_dropout=0.0,
         highway_cycles=10,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ) -> None:
         super().__init__()
         self.encode = nn.Sequential(
@@ -245,9 +246,10 @@ class cheerla_et_al_genomic_encoder(nn.Module):
         self.encoding_dimension = encoding_dimension
         self.p_dropout = p_dropout
         self.highway_cycles = highway_cycles
+        self.device = device
 
     def forward(self, X):
-        return self.encode(X)
+        return self.encode(X.to(self.device))
 
 
 class cheerla_et_al_clinical_encoder(nn.Module):
