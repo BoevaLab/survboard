@@ -35,7 +35,6 @@ class HazardRegression(nn.Module):
                 [
                     nn.Linear(input_dimension, hidden_layer_sizes[0]),
                     nn.ReLU(),
-                    nn.BatchNorm1d(hidden_layer_sizes[0]),
                     nn.Dropout(p_dropout),
                 ]
                 + [
@@ -46,14 +45,13 @@ class HazardRegression(nn.Module):
                             bias=bool(i == (len(hidden_layer_sizes) - 1)),
                         ),
                         nn.ReLU(),
-                        nn.BatchNorm1d(hidden_layer_sizes[i + 1]),
                         nn.Dropout(p_dropout),
                     ]
                     for i in range(len(hidden_layer_sizes) - 1)
                 ]
             )
         )
-        self.hazard = self.hazard[:-3]
+        self.hazard = self.hazard[:-2]
 
     def forward(self, X):
         return self.hazard(X)
