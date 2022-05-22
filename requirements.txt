@@ -40,6 +40,7 @@ fonttools==4.31.2
 frozenlist==1.3.0
 fsspec==2022.3.0
 future==0.18.2
+git+https://github.com/thuijskens/scikit-hyperband.git
 google-auth==2.6.2
 google-auth-oauthlib==0.4.6
 grpcio==1.42.0
@@ -86,7 +87,7 @@ networkx==2.7.1
 notebook==6.4.10
 numba==0.53.1
 numexpr==2.8.1
-numpy==1.19.5
+numpy>=1.19.5
 oauthlib==3.2.0
 osqp==0.6.2.post5
 packaging==21.3
@@ -125,7 +126,7 @@ Pygments==2.11.2
 PyJWT==2.3.0
 pyOpenSSL==22.0.0
 pyparsing==3.0.7
-pyppmd==0.17.3
+pyppmd>=0.17.3
 pyrsistent==0.18.1
 PySocks==1.7.1
 pytest==7.1.2
@@ -143,7 +144,7 @@ requests==2.27.1
 requests-oauthlib==1.3.1
 rsa==4.8
 scikit-image==0.19.2
-scikit-learn==1.0.2
+scikit-learn>=0.21,<0.23
 scikit-survival==0.17.2
 scipy==1.5.4
 seaborn==0.11.2
@@ -154,7 +155,7 @@ skorch==0.11.0
 smmap==5.0.0
 soupsieve==2.3.1
 stack-data==0.2.0
-survival-benchmark==0.1.0
+#survival-benchmark==0.1.0
 survival-evaluation==0.1.3
 tabulate==0.8.9
 tangled-up-in-unicode==0.1.0
@@ -186,5 +187,5 @@ webencodings==0.5.1
 Werkzeug==2.1.1
 wheel==0.37.1
 yarl==1.7.2
-zipfile-deflate64==0.0.0
+zipfile-deflate64>=0.1.0
 zipp==3.8.0

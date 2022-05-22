@@ -1,0 +1,144 @@
+{
+    "seed": 42,
+    "lr": 0.01,
+    "epochs": 25,
+    "train_split_name_tcga": "train_splits_with_rppa.csv",
+    "test_split_name_tcga": "test_splits_with_rppa.csv",
+    "data_name_tcga": "new_clinical_multi_omics_with_rppa.csv",
+    "data_name_tcga_dropped_dummy": "new_clinical_multi_omics_with_rppa_dummy_dropped.csv",
+    "gex_log": {
+        "CLLE-ES": true,
+        "NBL-US": false,
+        "ESAD-UK": false,
+        "PACA-AU": false,
+        "LICA-FR": true, 
+        "PACA-CA": true,
+        "LIRI-JP": true,
+        "PRAD-UK": false,
+        "PBCA-US": true,
+        "SKCA-BR": false
+    },
+    "gex_type": {
+        "CLLE-ES": "seq",
+        "ESAD-UK": false,
+        "PACA-AU": "array",
+        "LICA-FR": "seq", 
+        "PACA-CA": "seq",
+        "LIRI-JP": "seq"
+    },
+    "exposure": {
+        "CLLE-ES": true,
+        "ESAD-UK": true,
+        "PACA-CA": true,
+        "PACA-AU": false,
+        "LIRI-JP": false,
+        "LICA-FR": false
+    },
+    "train_split_name": "train_splits.csv",
+    "test_split_name": "test_splits.csv",
+    "data_name_icgc": "new_clinical_multi_omics.csv",
+    "mirna": {
+        "BRCA-KR": false,
+        "LIRI-JP": false,
+        "OV-AU": false,
+        "RECA-EU": false
+    },
+    "tcga_cancers": [
+        "BLCA",
+        "BRCA",
+        "COAD",
+        "ESCA",
+        "HNSC",
+        "KIRC",
+        "KIRP",
+        "LGG",
+        "LUAD",
+        "PAAD",
+        "SARC",
+        "SKCM",
+        "STAD",
+        "UCEC",
+        "OV",
+        "LIHC",
+        "LUSC",
+        "LAML",
+        "CESC",
+        "GBM",
+        "READ"
+    ],
+    "icgc_cancers": [
+        "PACA-AU",
+        "CLLE-ES",
+        "PACA-CA",
+        "LIRI-JP"
+    ],
+    "target_cancers": [
+        "ALL",
+        "AML",
+        "WT"
+
+    ],
+    "icgc_modalities": {
+        "CLLE-ES": ["clinical", "gex", "mutation"],
+        "PACA-AU": ["clinical", "gex", "mutation"],
+        "LICA-FR": ["clinical", "gex", "mutation"],
+        "PACA-CA": ["clinical", "gex", "mutation"],
+        "LIRI-JP": ["clinical", "gex", "mutation"]
+
+    },
+    "dpi": 600,
+    "my_cols": [
+        "#F8766D",
+        "#E18A00",
+        "#BE9C00",
+        "#8CAB00",
+        "#24B700",
+        "#00BE70",
+        "#00C1AB",
+        "#00BBDA",
+        "#00ACFC",
+        "#8B93FF",
+        "#D575FE",
+        "#F962DD",
+        "#FF65AC"
+    ],
+    "plot_height": 15.7463,
+    "plot_width": 15.7463,
+    "n_jobs": -1,
+    "outer_repetitions": 5,
+    "outer_splits": 5,
+    "inner_splits": 5,
+    "verbosity": 0,
+    "bf_models": [
+        "randomblock_favoring",
+        "blockforest"
+    ],
+    "other_baselines": [
+        "clinical_ridge",
+        "ranger",
+        "lasso_all"
+    ],
+    "clinical_drop_limit": 5,
+    "omics_drop_limit": 1,
+    "mutation_effects": {
+        "intron_variant": 0,
+        "upstream_gene_variant": 0,
+        "downstream_gene_variant": 0,
+        "synonymous_variant": 0,
+        "exon_variant": 0,
+        "missense_variant": 1,
+        "splice_acceptor_variant": 1,
+        "3_prime_UTR_variant": 0,
+        "inframe_deletion": 1,
+        "stop_gained": 1,
+        "frameshift_variant": 1,
+        "splice_donor_variant": 1,
+        "splice_region_variant": 1,
+        "intergenic_region": 0,
+        "5_prime_UTR_premature_start_codon_gain_variant": 0,
+        "5_prime_UTR_variant": 0,
+        "start_lost": 1,
+        "disruptive_inframe_deletion": 1,
+        "stop_lost": 1
+    }
+}
