@@ -1,4 +1,5 @@
 import os
+from pydoc import cli
 import random
 from numpy import dtype
 import numpy as np
@@ -6,8 +7,11 @@ import pandas as pd
 from sklearn.preprocessing import OrdinalEncoder
 import torch
 from torch.utils.data import Dataset
+from skorch.helper import SliceDict
+from typing import List, Tuple, Callable
 
-from typing import List, Tuple
+from survival_benchmark.python.utils.utils import transform_survival_target
+from ...utils import *
 
 # TODO: transform categorical clinical varibales to numeric so can convert to tensor
 # TODO: OR write a custom collate function for batching
@@ -25,7 +29,10 @@ class MultimodalDataset(Dataset):
         label_path: str = None,
         modalities: List[str] = ["clinical", "gex", "mirna", "cnv", "meth", "mut", "rppa"],
         dropout: int = 0,
-        device: torch.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+        categorical_encoder=OrdinalEncoder(),
+        cnv_encoder=OrdinalEncoder(),
+        mode: str = "train",
+        device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     ) -> None:
         """Constructor.
 
@@ -41,8 +48,15 @@ class MultimodalDataset(Dataset):
         """
         super().__init__()
 
+        self.cat_encoder = categorical_encoder
+        self.cnv_encoder = cnv_encoder
+
+        self.mode = mode
+
         self.data = pd.read_csv(data_path, index_col=0)
-        self.input_size = {}
+
+        self.columns_to_subset = {}
+
         if label_path:
             self.labels = pd.read_csv(label_path)
         else:
@@ -58,6 +72,23 @@ class MultimodalDataset(Dataset):
             self.patient_ids = self.data.index
 
         self.available_modalities = [m for m in modalities if any(self.data.columns.str.contains(m))]
+        if "clinical" in self.available_modalities:
+            self.categorical, self.continuous = self._clinical_to_tuple()
+
+        for modality in self.available_modalities:
+            self.columns_to_subset[modality] = self.data.columns[self.data.columns.str.contains(modality)]
+
+        if "cnv" in self.available_modalities:
+            if self.mode == "train":
+                self.data[self.columns_to_subset["cnv"]] = self.cnv_encoder.fit_transform(
+                    self.data[self.columns_to_subset["cnv"]]
+                )
+            elif self.mode == "test":
+                self.data[self.columns_to_subset["cnv"]] = self.cnv_encoder.transform(
+                    self.data[self.columns_to_subset["cnv"]]
+                )
+
+        self.input_size = self.get_input_size()
 
         assert 0 <= dropout <= 1, '"dropout" must be in [0, 1].'
         self.dropout = dropout
@@ -67,8 +98,34 @@ class MultimodalDataset(Dataset):
         ), "One or more modalities not present in the data"
         # assert all(any(self.data.columns.str.contains(m)) for m in self.available_modalities), "One or more modalities not present in the data"
 
-    def get_input_size(self, modality, size):
-        self.input_size.update({modality: size})
+    def get_input_size(self):
+
+        input_size = {}
+        for modality in self.available_modalities:
+            if modality == "clinical":
+                input_size.update(
+                    {
+                        modality: {
+                            "categorical": list(map(len, self.cat_encoder.categories_)),
+                            # self.categorical.apply(
+                            #     lambda x: len(np.unique(x.view(int)).view(float))
+                            # ).values.tolist(),
+                            "continuous": self.continuous.shape[1],
+                        }
+                    }
+                )
+            elif modality == "cnv":
+                input_size.update(
+                    {
+                        modality: {
+                            "categories": len(self.cnv_encoder.categories_[0]),
+                            "length": sum(self.data.columns.str.contains(modality)),
+                        }
+                    }
+                )
+            else:
+                input_size.update({modality: sum(self.data.columns.str.contains(modality))})
+        return input_size
 
     def _get_modality(self, modality: str, patient_id: str) -> torch.Tensor:
         """Retrieve modality specific features from the merged data file.
@@ -81,19 +138,20 @@ class MultimodalDataset(Dataset):
             torch.Tensor: Tensor of the modality for a given patient. If NA, then returns
                 a tensor of zeroes (default value, can be changed).
         """
-        columns_to_subset = self.data.columns[self.data.columns.str.contains(modality)]
-        self.get_input_size(modality, len(columns_to_subset))
-        subset = self.data.loc[patient_id, columns_to_subset]
 
         if modality == "clinical":
-            categorical, continuous = self._clinical_to_tuple(subset)
-            return subset.to_numpy()
-        elif all(subset.isna()):
-            return self._set_missing_modality(subset)
+            categorical = torch.tensor(self.categorical.loc[patient_id].values, dtype=torch.int)
+            continuous = torch.tensor(self.continuous.loc[patient_id].values, dtype=torch.float)
+            return categorical, continuous
         else:
-            return torch.from_numpy(np.array(subset, dtype=np.float32))
+            columns_to_subset = self.columns_to_subset[modality]
+            subset = self.data.loc[patient_id, columns_to_subset]
+            if all(subset.isna()):
+                return self._set_missing_modality(subset)
+            else:
+                return torch.from_numpy(np.array(subset, dtype=np.float32))
 
-    def _clinical_to_tuple(self, clinical: pd.DataFrame) -> Tuple:
+    def _clinical_to_tuple(self) -> Tuple:
         """Breaks down clinical data into continous and categorical variables.
 
         Args:
@@ -102,12 +160,19 @@ class MultimodalDataset(Dataset):
         Returns:
             Tuple: Tuple of dataframes separating categorical from continuous.
         """
-        cat_encoder = OrdinalEncoder()
-        categorical = clinical.select_dtypes(include=[object])
-        continuous = clinical.select_dtypes(include=[int, float])
+        # TODO: OrdinalEncoder should be just fit for test data
 
-        categorical = torch.tensor(cat_encoder.fit_transform(categorical), dtype=torch.int)
-        continuous = torch.from_numpy(continuous.to_numpy())
+        columns_to_subset = self.data.columns[self.data.columns.str.contains("clinical")]
+        clinical_subset = self.data[columns_to_subset]
+
+        categorical = clinical_subset.select_dtypes(include=[object])
+        categorical = categorical.astype(str)
+        continuous = clinical_subset.select_dtypes(include=[int, float])
+
+        if self.mode == "train":
+            categorical = pd.DataFrame(self.cat_encoder.fit_transform(categorical), index=categorical.index)
+        elif self.mode == "test":
+            categorical = pd.DataFrame(self.cat_encoder.transform(categorical), index=categorical.index)
 
         return categorical, continuous
 
@@ -200,7 +265,9 @@ class MultimodalDataset(Dataset):
         Returns:
             Tuple: Tuple containing patient dictionary and a second tuple of the event and time.
         """
+        # TODO: for sliced dict, pass clinical as a sngle merged df, and split it in sub_modules
         patient_id = self.patient_ids[idx]
         data, time, event = self.get_patient_dict(patient_id)
         # target = np.array([f"{int(event)}|{time}"])
+        # data = SliceDict(**data)
         return data, (time, event)
