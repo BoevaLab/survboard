@@ -66,6 +66,7 @@ class DeepSurv(nn.Module):
         p_dropout=0.0,
     ):
         super().__init__()
+
         self.log_hazard = HazardRegression(
             input_dimension, 1, hidden_layer_sizes, activation, p_dropout
         )
@@ -73,6 +74,7 @@ class DeepSurv(nn.Module):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.activation = activation
         self.p_dropout = p_dropout
+
 
     def forward(self, x):
         return self.log_hazard(x)
@@ -128,9 +130,7 @@ class CoxPHNet(BaseSurvivalNeuralNet):
 
     def predict_survival_function(self, X):
         log_hazard_ratios = self.forward(X)
-        survival_function = self.breslow.get_survival_function(
-            log_hazard_ratios
-        )
+        survival_function = self.breslow.get_survival_function(log_hazard_ratios)
         return survival_function
 
     def predict(self, X):
@@ -152,16 +152,14 @@ class CheerlaEtAlNet(CoxPHNet):
         self.train_event = event
         self.partial_fit(X, y, **fit_params)
         self.fit_breslow(
-            self.module_.forward(torch.tensor(X))[0].detach().numpy().ravel(),
+            self.module_.forward(torch.tensor(X))[0].detach().cpu().numpy().ravel(),
             time,
             event,
         )
         return self
 
     def forward(self, X, training=False, device="cpu"):
-        y_infer = list(self.forward_iter(X, training=training, device=device))[
-            0
-        ][0]
+        y_infer = list(self.forward_iter(X, training=training, device=device))[0][0]
         return y_infer
 
 
@@ -181,6 +179,8 @@ class GDPNet(CoxPHNet):
                 )
             )
 
+
+
         lasso = torch.sum(
             torch.stack(
                 [
@@ -196,6 +196,7 @@ class GDPNet(CoxPHNet):
         )
 
 
+
 # Adapted from: https://github.com/gevaertlab/MultimodalPrognosis/blob/master/modules.py
 class Highway(nn.Module):
     def __init__(self, size, num_layers, f):
@@ -203,15 +204,9 @@ class Highway(nn.Module):
         super(Highway, self).__init__()
 
         self.num_layers = num_layers
-        self.nonlinear = nn.ModuleList(
-            [nn.Linear(size, size) for _ in range(num_layers)]
-        )
-        self.linear = nn.ModuleList(
-            [nn.Linear(size, size) for _ in range(num_layers)]
-        )
-        self.gate = nn.ModuleList(
-            [nn.Linear(size, size) for _ in range(num_layers)]
-        )
+        self.nonlinear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
+        self.linear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
+        self.gate = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
         self.f = f
 
     def forward(self, x):
@@ -231,6 +226,7 @@ class cheerla_et_al_genomic_encoder(nn.Module):
         encoding_dimension,
         p_dropout=0.0,
         highway_cycles=10,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ) -> None:
         super().__init__()
         self.encode = nn.Sequential(
@@ -243,22 +239,26 @@ class cheerla_et_al_genomic_encoder(nn.Module):
         self.encoding_dimension = encoding_dimension
         self.p_dropout = p_dropout
         self.highway_cycles = highway_cycles
+        self.device = device
 
     def forward(self, X):
-        return self.encode(X)
+        return self.encode(X.to(self.device))
 
 
 class cheerla_et_al_clinical_encoder(nn.Module):
-    def __init__(self, input_dimension, encoding_dimension=512) -> None:
+    def __init__(self, input_dimension, encoding_dimension=512, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")) -> None:
         super().__init__()
+
+        self.device = device
         self.encode = nn.Sequential(
             nn.Linear(input_dimension, encoding_dimension), nn.Sigmoid()
         )
         self.input_dimension = input_dimension
         self.encoding_dimension = encoding_dimension
 
+
     def forward(self, X):
-        return self.encode(X)
+        return self.encode(X.to(self.device))
 
 
 class cheerla_et_al(nn.Module):
@@ -271,18 +271,11 @@ class cheerla_et_al(nn.Module):
         p_multimodal_dropout=0.25,
     ) -> None:
         super().__init__()
-        block_encoders = [
-            cheerla_et_al_clinical_encoder(len(blocks[0]), encoding_dimension)
-        ] + [
-            cheerla_et_al_genomic_encoder(
-                len(i), encoding_dimension, p_dropout
-            )
-            for i in blocks[1:]
+        block_encoders = [cheerla_et_al_clinical_encoder(len(blocks[0]), encoding_dimension)] + [
+            cheerla_et_al_genomic_encoder(len(i), encoding_dimension, p_dropout) for i in blocks[1:]
         ]
         self.block_encoders = nn.ModuleList(block_encoders)
-        self.hazard = HazardRegression(
-            encoding_dimension, 1, [128], nn.Sigmoid, p_dropout
-        )
+        self.hazard = HazardRegression(encoding_dimension, 1, [128], nn.Sigmoid, p_dropout)
         self.blocks = blocks
         self.encoding_dimension = encoding_dimension
         self.p_dropout = p_dropout
@@ -292,6 +285,7 @@ class cheerla_et_al(nn.Module):
     def multimodal_dropout(self, X, p_dropout, blocks, upweight=True):
         for block in blocks:
             if not torch.all(X[:, block] == 0):
+
                 msk = torch.where(
                     (torch.rand(X.shape[0]) <= p_dropout).long()
                 )[0]
@@ -304,12 +298,14 @@ class cheerla_et_al(nn.Module):
             torch.logical_not(torch.sum(X == 0, axis=1) == X.shape[0])
         )[0]
         X = X[msk, :]
+
         if upweight:
             X = X / (1 - p_dropout)
         return X, msk
 
     def forward(self, X):
         if self.p_multimodal_dropout > 0 and self.training:
+
             X, msk = self.multimodal_dropout(
                 X, self.p_multimodal_dropout, self.blocks
             )
@@ -324,5 +320,6 @@ class cheerla_et_al(nn.Module):
         joint = torch.sum(
             torch.stack(block_encoded, axis=2), axis=2
         ) / torch.sum(torch.stack(block_encoded, axis=2) != 0, axis=2)
+
         hazard = self.hazard(joint)
         return hazard, block_encoded, msk.long()

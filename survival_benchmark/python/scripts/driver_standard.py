@@ -1,6 +1,6 @@
 import json
 import sys
-
+import logging
 import numpy as np
 import pandas as pd
 import torch
@@ -34,24 +34,33 @@ model_mapping = ["deepsurv", "gdp"]
 
 param_spaces = [
     {
-        "lr": loguniform(0.01, 0.0001),
+        "lr": loguniform(0.0001, 0.01),
         "module__p_dropout": uniform(0.0, 0.5),
-        "optimizer__weight_decay": loguniform(0.01, 0.0001),
+        "optimizer__weight_decay": loguniform(0.0001, 0.01),
         "batch_size": [64, 128, 256],
     },
     {
-        "lr": loguniform(0.01, 0.0001),
+        "lr": loguniform(0.0001, 0.01),
         "module__p_dropout": uniform(0.0, 0.5),
         "module__alpha": uniform(0.0, 1.0),
-        "module__scale": loguniform(0.01, 0.0001),
+        "module__scale": loguniform(0.0001, 0.01),
         "batch_size": [64, 128, 256],
     },
 ]
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
+    #setup logger
+    logging.basicConfig(
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+    logger = logging.getLogger("neural_models")
+    logger.setLevel(logging.DEBUG)
     seed_torch()
-    with open("config/config.json") as f:
+    with open("/u/nikita/survival/survival_benchmark/config/config.json") as f:
         config = json.load(f)
     cox_loss_scorer = make_scorer(
         score_func=negative_partial_log_likelihood_loss,
@@ -63,15 +72,15 @@ def main():
             for cancer in config[f"{project.tolower()}_cancers"]:
                 print(f"Starting cancer: {cancer}")
                 data = pd.read_csv(
-                    f"~/boeva_lab_scratch/data/projects/David/Nikita_David_survival_benchmark/survival_benchmark/data/processed/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
+                    f"/dccstor/storage-1/survival_data/processed/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
                 )
                 time, event = data["OS_days"].values, data["OS"].values
 
                 train_splits = pd.read_csv(
-                    f"~/boeva_lab_scratch/data/projects/David/Nikita_David_survival_benchmark/survival_benchmark/data/splits/{project}/{cancer}_train_splits.csv"
+                    f"/dccstor/storage-1/survival_data/splits/{project}/{cancer}_train_splits.csv"
                 )
                 test_splits = pd.read_csv(
-                    f"~/boeva_lab_scratch/data/projects/David/Nikita_David_survival_benchmark/survival_benchmark/data/splits/{project}/{cancer}_test_splits.csv"
+                    f"/dccstor/storage-1/survival_data/splits/{project}/{cancer}_test_splits.csv"
                 )
                 y = transform_survival_target(time, event)
                 data = data[
@@ -107,7 +116,7 @@ def main():
                     ]
                 )
                 for outer_split in range(train_splits.shape[0]):
-                    print(f"Starting split: {outer_split + 1} / 25")
+                    logger.info(f"Starting split: {outer_split + 1} / 25")
                     train_ix = (
                         train_splits.iloc[outer_split, :].dropna().values
                     )
@@ -158,6 +167,8 @@ def main():
                                     ),
                                 ),
                             ],
+                            device=device
+
                         )
                     elif ix == 1:
                         net = GDPNet(
@@ -180,6 +191,7 @@ def main():
                                     ),
                                 ),
                             ],
+                            device=device
                         )
                     grid = HyperbandSearchCV(
                         estimator=net,
@@ -228,6 +240,7 @@ def main():
                                     ),
                                 ),
                             ],
+                            device=device
                         )
                     elif ix == 1:
                         net = GDPNet(
@@ -258,6 +271,8 @@ def main():
                                     ),
                                 ),
                             ],
+                            device=device
+
                         )
                     net.set_params(
                         **{
@@ -281,7 +296,7 @@ def main():
                         ],
                         columns=time[train_ix.astype(int)].astype(int),
                     ).to_csv(
-                        f"./data/results/{project}_{cancer}_{model_mapping[ix]}_{outer_split}.csv",
+                        f"/dccstor/storage-1/survival_data/results/{project}_{cancer}_{model_mapping[ix]}_{outer_split}.csv",
                         index=False,
                     )
 
