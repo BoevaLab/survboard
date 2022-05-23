@@ -4,22 +4,15 @@ import warnings
 import math
 from skorch import NeuralNet
 import torch
+import numpy as np
+import pandas as pd
 
 from survival_benchmark.python.utils.utils import inverse_transform_survival_target
 from survival_benchmark.python.modules.modules import BaseSurvivalNeuralNet
 from .sub_models import FC, ClinicalNet, CnvNet, Fusion
 
-# TODO: in the modules class, add a predict and predict_survival_function funcs
-
 
 class MultiSurvModel(NeuralNet):
-    # def fit(self, X, y=None, **fit_params):
-    #     time, event = inverse_transform_survival_target(y)
-    #     pass
-
-    # def predict(self):
-    #     pass
-
     def get_loss(self, y_pred, y_true, X=None, training=False):
         modality_features, risk = y_pred
         # time, event = inverse_transform_survival_target(y_true)
@@ -34,8 +27,51 @@ class MultiSurvModel(NeuralNet):
         )
         return loss
 
-    def predict_survival_function(self):
-        pass
+    def _check_dropout(self, dataset):
+        dropout = dataset.dropout
+        if dropout > 0:
+            warnings.warn(f"Data dropout set to {dropout} in input dataset")
+
+    def _convert_to_survival(self, conditional_probabilities):
+        return np.cumprod(conditional_probabilities)
+
+    def predict_survival_function(self, data, prediction_year=None, intervals=None):
+        """Predict patient survival probability at provided time point.
+        intervals - Ex torch.arange(0.5,30,1)
+        prediction_year - Ex 0.65 or smth
+        if both are None, return surv probability for all intervals
+        """
+        if prediction_year is not None:
+            assert intervals is not None, (
+                '"intervals" is required to' + ' compute prediction at a specific "prediction_year".'
+            )
+
+        # data = self._clone(patient_data)
+
+        # data = self._data_to_device(data)
+        risk = self.predict(data)
+        # check this again should be risk i guess
+        survival_prob = self._convert_to_survival(risk.cpu())
+
+        if prediction_year is not None:
+            survival_prob = np.interp(
+                prediction_year * 365,
+                intervals,
+                # Add probability 1.0 at t0 to match number of intervals
+                torch.cat((torch.tensor([1]).float(), survival_prob)),
+            )
+
+        return survival_prob
+
+    def predict(self, data):
+        # Convert to survival probabilities
+        print(data)
+        self.module_.eval()
+
+        # with torch.set_grad_enabled(False):
+        #     _, risk = self.module_(data)
+
+        return 0
 
 
 class MultiSurv(torch.nn.Module):
@@ -46,7 +82,7 @@ class MultiSurv(torch.nn.Module):
         self.data_modalities = data_modalities.keys()
         self.output_intervals = output_intervals
         n_output_intervals = len(output_intervals) - 1
-        self.mfs = modality_feature_size = 512
+        self.mfs = 512
         valid_mods = ["clinical", "gex", "mirna", "meth", "cnv", "mut", "rppa"]
         assert all(mod in valid_mods for mod in data_modalities), f"Accepted input data modalitites are: {valid_mods}"
 
@@ -142,7 +178,7 @@ class MultiSurv(torch.nn.Module):
         )
 
     def forward(self, **kwargs):
-
+        # or pass a nested dict (called data) here, and replace **kwargs with 'data'
         multimodal_features = tuple()
 
         # Run data through modality sub-models (generate feature vectors) ----#

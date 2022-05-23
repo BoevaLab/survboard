@@ -4,7 +4,6 @@ from bisect import bisect_left
 
 import torch
 import torch.nn as nn
-from torchvision import models
 
 
 def freeze_layers(model, up_to_layer=None):
