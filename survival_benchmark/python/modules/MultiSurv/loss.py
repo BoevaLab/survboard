@@ -1,11 +1,14 @@
 """Loss."""
-
+import warnings
 import torch
+from itertools import combinations
 
 
 class Loss(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, aux_criterion=None, is_multimodal=True):
         super(Loss, self).__init__()
+        self.aux_criterion = aux_criterion
+        self.is_multimodal = is_multimodal
 
     def _convert_labels(self, time, event, breaks):
         """Convert event and time labels to label array.
@@ -51,6 +54,18 @@ class Loss(torch.nn.Module):
             return loss.sum()
         raise ValueError(f'"reduction" must be "none", "mean" or "sum".')
 
+    def _compute_auxiliary_loss(self, features):
+        "Embedding vector distance loss."
+        losses = []
+
+        y = torch.ones(1).to(self.device)
+        for x1, x2 in combinations(features, 2):
+            losses.append(self.aux_criterion(x1, x2, y))
+
+        loss = torch.tensor(losses).mean()
+
+        return loss.to(self.device)
+
     def _neg_log_likelihood(self, risk, label, break_list, reduction="mean"):
         n_intervals = len(break_list) - 1
 
@@ -61,8 +76,16 @@ class Loss(torch.nn.Module):
 
         return self._reduction(neg_log_like, reduction)
 
-    def forward(self, risk, times=None, events=None, breaks=None, device=None):
+    def forward(self, risk, times=None, events=None, breaks=None, modality_features=None, device=None):
         label_array = self._convert_labels(times, events, breaks).to(device)
         loss = self._neg_log_likelihood(risk, label_array, breaks)
+
+        if not self.is_multimodal and self.aux_criterion is not None:
+            warnings.warn("Input data is unimodal: auxiliary" + " loss is not applicable.")
+
+        if self.is_multimodal and self.aux_criterion is not None:
+            # Embedding vector distance loss
+            auxiliary_loss = self._compute_auxiliary_loss(modality_features)
+            loss = (1.0 * auxiliary_loss) + (0.05 * loss)
 
         return loss
