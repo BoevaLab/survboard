@@ -14,16 +14,10 @@ from skorch.dataset import get_len, ValidSplit
 from sklearn.model_selection import StratifiedKFold
 
 
-
 def create_risk_matrix(observed_survival_time):
     observed_survival_time = observed_survival_time.squeeze()
     return (
-        (
-            torch.outer(observed_survival_time, observed_survival_time)
-            >= torch.square(observed_survival_time)
-        )
-        .long()
-        .T
+        (torch.outer(observed_survival_time, observed_survival_time) >= torch.square(observed_survival_time)).long().T
     )
 
 
@@ -40,20 +34,22 @@ class StratifiedSurvivalKFold(StratifiedKFold):
         if y is not None and isinstance(y, np.ndarray):
             # Handle string target by selecting out only the event
             # to stratify on.
-            if not y.dtype == np.dtype("float32"):
-                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(
-                    np.float32
-                )
+            if y.dtype not in [np.dtype("float32"), np.dtype("int")]:
+                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
+            else:
+                return super()._make_test_folds(X=X, y=y)
         return super()._make_test_folds(X=X, y=y)
 
     def _iter_test_masks(self, X, y=None, groups=None):
         if y is not None and isinstance(y, np.ndarray):
             # Handle string target by selecting out only the event
             # to stratify on.
-            if not y.dtype == np.dtype("float32"):
-                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(
-                    np.float32
-                )
+
+            if y.dtype not in [np.dtype("float32"), np.dtype("int")]:
+                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
+            else:
+                event = y[:, 1]
+                return super()._iter_test_masks(X, y=event)
         return super()._iter_test_masks(X, y=y)
 
     def split(self, X, y, groups=None):
@@ -75,9 +71,7 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
             # to stratify on.
             y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
 
-        bad_y_error = ValueError(
-            "Stratified CV requires explicitly passing a suitable y."
-        )
+        bad_y_error = ValueError("Stratified CV requires explicitly passing a suitable y.")
 
         if (y is None) and self.stratified:
             raise bad_y_error
@@ -91,10 +85,7 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
         if y is not None:
             len_y = get_len(y)
             if len_dataset != len_y:
-                raise ValueError(
-                    "Cannot perform a CV split if dataset and y "
-                    "have different lengths."
-                )
+                raise ValueError("Cannot perform a CV split if dataset and y " "have different lengths.")
 
         args = (np.arange(len_dataset),)
         if self._is_stratified(cv):
@@ -174,7 +165,7 @@ def negative_partial_log_likelihood(
     predicted_log_hazard_ratio,
     observed_survival_time,
     observed_event_indicator,
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ):
     observed_event_indicator = observed_event_indicator.to(device)
     observed_survival_time = observed_survival_time.to(device)
@@ -196,8 +187,7 @@ def negative_partial_log_likelihood(
             predicted_log_hazard_ratio.squeeze()
             - torch.log(
                 torch.sum(
-                    risk_matrix.float()
-                    * torch.exp(predicted_log_hazard_ratio.squeeze()),
+                    risk_matrix.float() * torch.exp(predicted_log_hazard_ratio.squeeze()),
                     axis=1,
                 )
             )
@@ -206,12 +196,8 @@ def negative_partial_log_likelihood(
 
 
 def has_missing_modality(encoded_blocks, patient, matched_patient, modality):
-    return torch.all(
-        encoded_blocks[modality][patient]
-        == encoded_blocks[modality][patient][0]
-    ) or torch.all(
-        encoded_blocks[modality][matched_patient]
-        == encoded_blocks[modality][matched_patient][0]
+    return torch.all(encoded_blocks[modality][patient] == encoded_blocks[modality][patient][0]) or torch.all(
+        encoded_blocks[modality][matched_patient] == encoded_blocks[modality][matched_patient][0]
     )
 
 
@@ -227,9 +213,7 @@ def similarity_loss(encoded_blocks, M, device=torch.device("cuda" if torch.cuda.
                 patient_similarity = torch.tensor(0.0, device=device)
                 matched_patient_similarity = torch.tensor(0.0, device=device)
                 for modality in range(len(encoded_blocks)):
-                    if has_missing_modality(
-                        encoded_blocks, patient, matched_patient, modality
-                    ):
+                    if has_missing_modality(encoded_blocks, patient, matched_patient, modality):
                         pass
                     else:
                         patient_similarity += cos(
@@ -266,28 +250,16 @@ class cox_criterion(nn.Module):
     def forward(self, prediction, target):
         time, event = inverse_transform_survival_target(target)
         log_hazard_ratio = prediction
-        cox_loss = negative_partial_log_likelihood(
-            log_hazard_ratio, torch.tensor(time), torch.tensor(event)
-        )
+        cox_loss = negative_partial_log_likelihood(log_hazard_ratio, torch.tensor(time), torch.tensor(event))
         return cox_loss
 
 
 def get_blocks(feature_names):
-    column_types = (
-        pd.Series(feature_names).str.rsplit("_").apply(lambda x: x[0]).values
-    )
+    column_types = pd.Series(feature_names).str.rsplit("_").apply(lambda x: x[0]).values
     return [
-        np.where(
-            modality
-            == pd.Series(feature_names)
-            .str.rsplit("_")
-            .apply(lambda x: x[0])
-            .values
-        )[0].tolist()
+        np.where(modality == pd.Series(feature_names).str.rsplit("_").apply(lambda x: x[0]).values)[0].tolist()
         for modality in [
-            q
-            for q in ["clinical", "gex", "cnv", "rppa", "mirna", "mut", "meth"]
-            if q in np.unique(column_types)
+            q for q in ["clinical", "gex", "cnv", "rppa", "mirna", "mut", "meth"] if q in np.unique(column_types)
         ]
     ]
 
