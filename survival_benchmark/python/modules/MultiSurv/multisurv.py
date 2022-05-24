@@ -106,17 +106,36 @@ class MultiSurvModel(NeuralNet):
 class MultiSurv(torch.nn.Module):
     """Deep Learning model for MULTImodal pan-cancer SURVival prediction."""
 
-    def __init__(self, data_modalities: dict, fusion_method="max", loss_fn="nll", output_intervals=None, device=None):
+    def __init__(
+        self, data_modalities: dict, 
+        fusion_method="max", 
+        fusion='intermediate',
+        need_emb=True, 
+        loss_fn="nll", 
+        output_intervals=None, 
+        device=None
+        ):
+        
         super(MultiSurv, self).__init__()
         self.data_modalities = data_modalities.keys()
         self.loss_fn = loss_fn
-        valid_loss_fn = ['nll', 'cox']
-        self.output_intervals = output_intervals
-        n_output_intervals = len(output_intervals) - 1
-        self.mfs = 512
-        valid_mods = ["clinical", "gex", "mirna", "meth", "cnv", "mut", "rppa"]
+        valid_loss_fn = ["nll", "cox"]
         assert loss_fn in valid_loss_fn, f"Accepted loss functions are: {valid_loss_fn}"
         
+        self.need_emb = need_emb
+        self.fusion = fusion
+        valid_fusions = ["early", "intermediate", "late"]
+        assert fusion in valid_fusions, f"Accepted fusion points are: {valid_fusions}"
+        if self.fusion == "early":
+            assert (not self.need_emb), "Embedding layer is not needed with Early Fusion."
+
+        self.output_intervals = output_intervals
+        n_output_intervals = len(output_intervals) - 1
+        if fusion == 'late':
+            self.mfs = n_output_intervals
+        else:
+            self.mfs = 512
+        valid_mods = ["clinical", "gex", "mirna", "meth", "cnv", "mut", "rppa"]
         assert all(mod in valid_mods for mod in data_modalities), f"Accepted input data modalitites are: {valid_mods}"
 
         assert len(data_modalities) > 0, "At least one input must be provided."
@@ -224,19 +243,29 @@ class MultiSurv(torch.nn.Module):
         #     multimodal_features += (self.submodels[modality](**kwargs[modality]),)
 
         for modality in self.data_modalities:
-            multimodal_features += (self.submodels[modality](kwargs[modality]),)
+            if self.fusion == 'late':
+                multimodal_features += (torch.nn.Sigmoid(self.submodels[modality](kwargs[modality])),)
+            else:
+                multimodal_features += (self.submodels[modality](kwargs[modality]),)
 
         # Feature fusion/aggregation -----------------------------------------#
         if len(multimodal_features) > 1:
-            x = self.aggregator(torch.stack(multimodal_features))
+            if self.fusion:
+                x = torch.mean(torch.stack(multimodal_features), dim=0) 
+            else:
+                x = self.aggregator(torch.stack(multimodal_features)) 
             feature_repr = {"modalities": multimodal_features, "fused": x}
         else:  # skip if running unimodal data
             x = multimodal_features[0]
             feature_repr = {"modalities": multimodal_features[0]}
 
         # Outputs ------------------------------------------------------------#
-        x = self.fc_block(x)
-        risk = self.risk_layer(x)
+        
+        if self.fusion == 'late':
+            risk = x
+        else:  
+            x = self.fc_block(x)
+            risk = self.risk_layer(x)
 
         # Return non-zero features (not missing input data)
         output_features = tuple()
