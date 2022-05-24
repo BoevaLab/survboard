@@ -11,9 +11,39 @@ from survival_benchmark.python.utils.utils import inverse_transform_survival_tar
 from survival_benchmark.python.modules.modules import BaseSurvivalNeuralNet
 from .sub_models import FC, ClinicalNet, CnvNet, Fusion
 from .loss import Loss
+from .lr_range_test import LRRangeTest
+
+# NOTE: if error - index out of range in self pops up during categorical data embedding,
+# it is because the encoded values should go between [0, num_embeddings]. Setting it to
+# 999999 etc wont work.
 
 
 class MultiSurvModel(NeuralNet):
+    def test_lr_range(
+        self,
+        dataloader,
+        optimizer,
+        criterion,
+        auxiliary_criterion,
+        output_intervals,
+        model,
+        init_value=1e-6,
+        final_value=10.0,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ):
+
+        lr_test = LRRangeTest(
+            dataloader=dataloader,
+            optimizer=optimizer,
+            criterion=criterion,
+            auxiliary_criterion=criterion,
+            output_intervals=output_intervals,
+            model=model,
+            device=device,
+        )
+        best_lr = lr_test.run(init_value=1e-6, final_value=10.0, beta=0.98)
+        return best_lr
+
     def ms_loss(self, y_true, y_pred, breaks):
         time, event = [], []
         for t, e in y_true:
@@ -88,6 +118,7 @@ class MultiSurvModel(NeuralNet):
 
     def predict(self, data):
         y = []
+
         # Convert to survival probabilities
         for yp in self.forward_iter(data, training=False):
             # yp = yp[1] if isinstance(yp, tuple) else yp
@@ -183,12 +214,11 @@ class MultiSurv(torch.nn.Module):
 
         # Mutation ---------------------------------------------------------------#
         if "mut" in self.data_modalities:
-            self.mut_submodel = CnvNet(output_vector_size=self.mfs)
+            self.mut_submodel = FC(data_modalities["mut"], self.mfs, 3)
             self.submodels["mut"] = self.mut_submodel
 
             if fusion_method == "cat":
                 self.num_features += self.mfs
-
         # Instantiate multimodal aggregator ----------------------------------#
         if len(data_modalities) > 1:
             self.aggregator = Fusion(fusion_method, self.mfs, device)
@@ -209,12 +239,6 @@ class MultiSurv(torch.nn.Module):
     def forward(self, **kwargs):
         # or pass a nested dict (called data) here, and replace **kwargs with 'data'
         multimodal_features = tuple()
-
-        # Run data through modality sub-models (generate feature vectors) ----#
-        # for modality in self.data_modalities:
-        #     if modality == "clinical":
-        #         continue
-        #     multimodal_features += (self.submodels[modality](**kwargs[modality]),)
 
         for modality in self.data_modalities:
             multimodal_features += (self.submodels[modality](kwargs[modality]),)

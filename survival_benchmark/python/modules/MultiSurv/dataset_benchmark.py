@@ -7,12 +7,10 @@ import pandas as pd
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 import torch
 from torch.utils.data import Dataset
-from skorch.helper import SliceDict
+
 from typing import List, Tuple, Callable
 
 
-# TODO: dict slicing for hyperband
-# TODO: add Ordinal encoding for mut
 class MultimodalDataset(Dataset):
     """Dataset class for MultiSurv; Returns a dictionary where each key is a modality
     and the corresponding value is the tensor
@@ -20,7 +18,7 @@ class MultimodalDataset(Dataset):
 
     def __init__(
         self,
-        data_path: str,
+        dataframe: pd.DataFrame,
         label_path: str = None,
         modalities: List[str] = ["clinical", "gex", "mirna", "cnv", "meth", "mut", "rppa"],
         dropout: int = 0,
@@ -48,7 +46,8 @@ class MultimodalDataset(Dataset):
         self.cnv_encoder = cnv_encoder
         self.mode = mode
 
-        self.data = pd.read_csv(data_path, index_col=0)
+        # self.data = pd.read_csv(data_path, index_col=0)
+        self.data = dataframe
 
         if label_path:
             self.labels = pd.read_csv(label_path)
@@ -190,7 +189,6 @@ class MultimodalDataset(Dataset):
         Returns:
             Tuple: Tuple of dataframes separating categorical from continuous.
         """
-        # TODO: OrdinalEncoder should be just fit for test data
 
         columns_to_subset = self.data.columns[self.data.columns.str.contains("clinical")]
         clinical_subset = self.data[columns_to_subset]
@@ -295,8 +293,8 @@ class MultimodalDataset(Dataset):
         Returns:
             Tuple: Tuple containing patient dictionary and a second tuple of the event and time.
         """
-        # TODO: for sliced dict, pass clinical as a sngle merged df, and split it in sub_modules
+
         patient_id = self.patient_ids[idx]
         data, time, event = self.get_patient_dict(patient_id)
-        # target = np.array([f"{int(event)}|{time}"])
+
         return data, (time, event)
