@@ -77,6 +77,7 @@ class Loss(torch.nn.Module):
         return self._reduction(neg_log_like, reduction)
 
     def forward(self, risk, times=None, events=None, breaks=None, modality_features=None, device=None):
+
         label_array = self._convert_labels(times, events, breaks).to(device)
         loss = self._neg_log_likelihood(risk, label_array, breaks)
 
