@@ -6,16 +6,39 @@ from skorch import NeuralNet
 import torch
 import numpy as np
 import pandas as pd
-
+from skorch.utils import to_numpy
 from survival_benchmark.python.utils.utils import inverse_transform_survival_target
 from survival_benchmark.python.modules.modules import BaseSurvivalNeuralNet
 from .sub_models import FC, ClinicalNet, CnvNet, Fusion
+from .loss import Loss
 
 
 class MultiSurvModel(NeuralNet):
+    def ms_loss(self, y_true, y_pred, breaks):
+        time, event = [], []
+        for t, e in y_true:
+            time.append(t)
+            event.append(e)
+
+        time = torch.tensor(time)
+        event = torch.tensor(event)
+
+        loss = Loss()(
+            risk=y_pred,
+            times=time,
+            events=event,
+            breaks=breaks.double().to(self.device),
+            device=self.device,
+        )
+        return loss
+
     def get_loss(self, y_pred, y_true, X=None, training=False):
-        modality_features, risk = y_pred
-        # time, event = inverse_transform_survival_target(y_true)
+
+        if isinstance(y_pred, (tuple, list)):
+            modality_features, risk = y_pred
+        else:
+            risk = y_pred
+
         time, event = y_true
 
         loss = self.criterion_(
@@ -64,14 +87,20 @@ class MultiSurvModel(NeuralNet):
         return survival_prob
 
     def predict(self, data):
+        y = []
         # Convert to survival probabilities
-        print(data)
-        self.module_.eval()
+        for yp in self.forward_iter(data, training=False):
+            # yp = yp[1] if isinstance(yp, tuple) else yp
+            _, risk = yp
 
+            y.append(to_numpy(risk))
+
+        ypred = torch.from_numpy(np.concatenate(y, 0))
+        # self.module_.eval()
         # with torch.set_grad_enabled(False):
         #     _, risk = self.module_(data)
 
-        return 0
+        return ypred
 
 
 class MultiSurv(torch.nn.Module):
