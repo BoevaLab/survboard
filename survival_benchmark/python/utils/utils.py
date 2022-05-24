@@ -36,8 +36,7 @@ class StratifiedSurvivalKFold(StratifiedKFold):
             # to stratify on.
             if y.dtype not in [np.dtype("float32"), np.dtype("int")]:
                 y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
-            else:
-                return super()._make_test_folds(X=X, y=y)
+
         return super()._make_test_folds(X=X, y=y)
 
     def _iter_test_masks(self, X, y=None, groups=None):
