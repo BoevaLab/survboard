@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from skorch.callbacks import Callback
 import numpy as np
 import torch
+from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 from torch import nn
 from skorch.utils import to_numpy
@@ -65,10 +66,12 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
     """
 
     def __call__(self, dataset, y=None, groups=None):
+
         if y is not None:
             # Handle string target by selecting out only the event
             # to stratify on.
-            y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
+            if y.dtype not in [np.dtype("float32"), np.dtype("int")]:
+                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
 
         bad_y_error = ValueError("Stratified CV requires explicitly passing a suitable y.")
 
@@ -91,6 +94,7 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
             args = args + (to_numpy(y),)
 
         idx_train, idx_valid = next(iter(cv.split(*args, groups=groups)))
+
         dataset_train = torch.utils.data.Subset(dataset, idx_train)
         dataset_valid = torch.utils.data.Subset(dataset, idx_valid)
         return dataset_train, dataset_valid
