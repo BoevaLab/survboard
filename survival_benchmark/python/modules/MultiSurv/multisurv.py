@@ -106,13 +106,17 @@ class MultiSurvModel(NeuralNet):
 class MultiSurv(torch.nn.Module):
     """Deep Learning model for MULTImodal pan-cancer SURVival prediction."""
 
-    def __init__(self, data_modalities: dict, fusion_method="max", output_intervals=None, device=None):
+    def __init__(self, data_modalities: dict, fusion_method="max", loss_fn="nll", output_intervals=None, device=None):
         super(MultiSurv, self).__init__()
         self.data_modalities = data_modalities.keys()
+        self.loss_fn = loss_fn
+        valid_loss_fn = ['nll', 'cox']
         self.output_intervals = output_intervals
         n_output_intervals = len(output_intervals) - 1
         self.mfs = 512
         valid_mods = ["clinical", "gex", "mirna", "meth", "cnv", "mut", "rppa"]
+        assert loss_fn in valid_loss_fn, f"Accepted loss functions are: {valid_loss_fn}"
+        
         assert all(mod in valid_mods for mod in data_modalities), f"Accepted input data modalitites are: {valid_mods}"
 
         assert len(data_modalities) > 0, "At least one input must be provided."
@@ -202,9 +206,12 @@ class MultiSurv(torch.nn.Module):
 
         self.fc_block = FC(in_features=self.num_features, out_features=n_neurons, n_layers=n_fc_layers)
 
-        self.risk_layer = torch.nn.Sequential(
-            torch.nn.Linear(in_features=n_neurons, out_features=n_output_intervals), torch.nn.Sigmoid()
-        )
+        if self.loss_fn == 'nll':
+            self.risk_layer = torch.nn.Sequential(
+                torch.nn.Linear(in_features=n_neurons, out_features=n_output_intervals), torch.nn.Sigmoid()
+            )
+        else:
+            self.risk_layer = torch.nn.Linear(in_features=n_neurons, out_features=1)
 
     def forward(self, **kwargs):
         # or pass a nested dict (called data) here, and replace **kwargs with 'data'
