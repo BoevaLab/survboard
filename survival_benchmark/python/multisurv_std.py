@@ -74,8 +74,8 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
 
     logger.info(f"Starting model: {model_name}")
 
-    # for cancer in config[f"{project.lower()}_cancers"]:
-    for cancer in ["SKCM"]:
+    for cancer in config[f"{project.lower()}_cancers"]:
+        # for cancer in ["SKCM"]:
         logger.info(f"Starting cancer: {cancer}")
 
         data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
@@ -118,10 +118,10 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
                 optimizer=torch.optim.Adam,
                 module__data_modalities=train_dataset.input_size,
                 module__output_intervals=params.get("output_intervals", torch.arange(0, 21, 1)),
-                train_split=ValidSplit(5, stratified=True),
+                train_split=ValidSplit(10, stratified=True),
                 criterion__aux_criterion=None,
                 criterion__is_multimodal=len(train_dataset.input_size) > 1,
-                max_epochs=params.get("max_epochs", 1),
+                max_epochs=params.get("max_epochs", 100),
                 batch_size=params.get("batch_size", 128),
                 verbose=1,
                 callbacks=[
@@ -170,7 +170,7 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
 
             logger.info(f"Best LR Found - {best_lr}")
             logger.info("Set params for network")
-            net.set_params(**{"lr": lr})
+            net.set_params(**{"lr": best_lr})
             logger.info("Fitting Network")
             net.fit(train_dataset, y_train)
             logger.info("Network Fitting Done")
