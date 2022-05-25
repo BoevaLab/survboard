@@ -6,6 +6,6 @@
     "scheduler_patience": 10,
     "scheduler_factor": 0.1,
     "ES_patience": 25,
-    "lr_bs": 64,
+    "lr_bs": 8,
     "num_intervals": 30
 }
