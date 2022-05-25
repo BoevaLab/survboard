@@ -24,6 +24,7 @@ class Loss(torch.nn.Module):
             * Second half is for non-censored times and is 1 for time interval
             in which event time falls and 0 for other intervals.
         """
+        breaks = breaks.to(self.device)
         n_intervals = len(breaks) - 1
         timegap = breaks[1:] - breaks[:-1]
         breaks_midpoint = breaks[:-1] + 0.5 * timegap
