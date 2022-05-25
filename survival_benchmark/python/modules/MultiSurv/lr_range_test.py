@@ -37,7 +37,7 @@ class LRRangeTest:
 
         return data
 
-    def run(self, init_value=1e-8, final_value=10.0, beta=0.98, phase="train", retain_graph=True):
+    def run(self, init_value=1e-8, final_value=10.0, beta=0.98, phase="train", retain_graph=None):
         "Run test."
         power = 1 / (len(self.dataloader) - 1)
         mult = (final_value / init_value) ** power
@@ -59,8 +59,8 @@ class LRRangeTest:
             # Get the loss for this mini-batch of inputs/outputs
             with torch.set_grad_enabled(phase == "train"):
                 feature_representations, risk = self.model(**data)
-                modality_features = feature_representations["modalities"]
-                loss = self.criterion(risk, time, event, self.output_intervals, modality_features)
+                # modality_features = feature_representations["modalities"]
+                loss = self.criterion(risk, time, event, self.output_intervals)
 
                 if phase == "train":
                     # Zero out parameter gradients
