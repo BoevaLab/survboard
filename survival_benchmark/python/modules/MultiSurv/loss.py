@@ -28,7 +28,7 @@ class Loss(torch.nn.Module):
         timegap = breaks[1:] - breaks[:-1]
         breaks_midpoint = breaks[:-1] + 0.5 * timegap
 
-        out = torch.zeros(len(time), n_intervals * 2)
+        out = torch.zeros(len(time), n_intervals * 2, device=self.device)
 
         for i, (t, e) in enumerate(zip(time, event)):
             # t = torch.round(t * 365)  # From years to days
