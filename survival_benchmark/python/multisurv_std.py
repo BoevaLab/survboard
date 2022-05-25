@@ -10,6 +10,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly
+from sklearn.preprocessing import OrdinalEncoder
 
 # from skorch.net import NeuralNet
 # from hyperband import HyperbandSearchCV
@@ -32,6 +33,44 @@ from survival_benchmark.python.utils.utils import (
     get_blocks,
     seed_torch,
 )
+
+
+def get_input_size(data, modalities):
+
+    input_size = {}
+    available_modalities = [m for m in modalities if any(data.columns.str.contains(m))]
+
+    for modality in available_modalities:
+        if modality == "clinical":
+            clin_subset = data.columns[data.columns.str.contains("clinical")]
+            cat_columns = data[clin_subset].select_dtypes(include=object).columns
+            con_columns = data[clin_subset].select_dtypes(include=[int, float]).columns
+            input_size.update(
+                {
+                    modality: {
+                        "categorical": list(
+                            data[cat_columns].astype(float).apply(lambda x: len(np.unique(x.view(int)).view(float)))
+                        ),
+                        "continuous": len(con_columns),
+                    }
+                }
+            )
+        elif modality == "cnv":
+            cnv_cols = data.columns[data.columns.str.contains("cnv")]
+
+            input_size.update(
+                {
+                    modality: {
+                        "categories": len(np.unique(data[cnv_cols[0]].values.view(int)).view(float)),
+                        "length": sum(data.columns.str.contains(modality)),
+                    }
+                }
+            )
+
+        else:
+            input_size.update({modality: sum(data.columns.str.contains(modality))})
+    return input_size
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("data_dir", type=str, help="Path to the folder containing data.")
@@ -74,10 +113,10 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
 
     logger.info(f"Starting model: {model_name}")
 
-    for cancer in config[f"{project.lower()}_cancers"]:
-        # for cancer in ["SKCM"]:
+    # for cancer in config[f"{project.lower()}_cancers"]:
+    for cancer in ["SKCM"]:
         logger.info(f"Starting cancer: {cancer}")
-
+        input_size = {}
         data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
 
         idx_col = "clinical_patient_id" if project == "TCGA" else "patient_id"
@@ -86,6 +125,22 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
         # TODO/INFO: Be careful here wrt missing modality case
         data = data.fillna("NA")
 
+        # Ordinal Encoding Data
+        # categorical
+        cat_columns = data.select_dtypes(include=object).columns
+        data[cat_columns] = (OrdinalEncoder().fit_transform(data[cat_columns])).astype(str)
+
+        # CNV
+        if any(data.columns.str.contains("cnv")):
+            cnv_columns = data.columns[data.columns.str.contains("cnv")]
+            data[cnv_columns] = OrdinalEncoder().fit_transform(data[cnv_columns])
+
+        msk = (data != data.iloc[0]).any()
+        data = data.loc[:, msk]
+
+        input_size = get_input_size(data, ["clinical", "gex", "mirna", "cnv", "meth", "mut", "rppa"])
+
+        # Train Test Splits
         train_splits = pd.read_csv(os.path.join(data_dir, f"splits/{project}/{cancer}_train_splits.csv"))
         test_splits = pd.read_csv(os.path.join(data_dir, f"splits/{project}/{cancer}_test_splits.csv"))
 
@@ -99,15 +154,12 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
             y_train = X_train["OS"]
             X_test = data.iloc[test_ix, :]
 
-            msk = (X_train != X_train.iloc[0]).any()
-            X_train = X_train.loc[:, msk]
-            X_test = X_test.loc[:, msk]
-
             train_dataset = MultimodalDataset(X_train)
+
             test_dataset = MultimodalDataset(
                 X_test,
-                categorical_encoder=train_dataset.cat_encoder,
-                cnv_encoder=train_dataset.cnv_encoder,
+                # categorical_encoder=train_dataset.cat_encoder,
+                # cnv_encoder=train_dataset.cnv_encoder,
                 scaler_test=train_dataset.scaler,
                 mode="test",
             )
@@ -116,12 +168,12 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
                 module=MultiSurv,
                 criterion=Loss,
                 optimizer=torch.optim.Adam,
-                module__data_modalities=train_dataset.input_size,
+                module__data_modalities=input_size,
                 module__output_intervals=params.get("output_intervals", torch.arange(0, 21, 1)),
                 train_split=ValidSplit(10, stratified=True),
                 criterion__aux_criterion=None,
-                criterion__is_multimodal=len(train_dataset.input_size) > 1,
-                max_epochs=params.get("max_epochs", 100),
+                criterion__is_multimodal=len(input_size) > 1,
+                max_epochs=params.get("max_epochs", 1),
                 batch_size=params.get("batch_size", 128),
                 verbose=1,
                 callbacks=[
@@ -148,11 +200,11 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
             )
 
             logger.info("Starting LR Finder")
-            # # LR range
+            # LR range
             net.initialize()
             lr_bs = 64
-            num_batches = len(data) / lr_bs
-            droplast = True if (num_batches - np.floor(num_batches)) * lr_bs > 1 else False
+            num_batches = len(X_train) / lr_bs
+            droplast = True if (num_batches - np.floor(num_batches)) * lr_bs == 1 else False
             best_lr = net.test_lr_range(
                 dataloader=torch.utils.data.DataLoader(
                     train_dataset,
@@ -165,7 +217,7 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
                 output_intervals=torch.arange(0, 21, 1),
                 model=net.module_,
                 init_value=1e-6,
-                final_value=10,
+                final_value=1.0,
             )
 
             logger.info(f"Best LR Found - {best_lr}")
@@ -176,7 +228,8 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
             logger.info("Network Fitting Done")
             survival_prob = net.predict_survival_function(test_dataset)
             logger.info("Converting surv prob to df and saving")
-            sf_df = pd.DataFrame(survival_prob, columns=net.module__output_intervals)
+
+            sf_df = pd.DataFrame(survival_prob, columns=np.arange(len(net.module__output_intervals) - 1))
             sf_df.to_csv(
                 os.path.join(
                     save_here,
