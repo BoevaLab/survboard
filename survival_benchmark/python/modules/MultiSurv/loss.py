@@ -5,10 +5,16 @@ from itertools import combinations
 
 
 class Loss(torch.nn.Module):
-    def __init__(self, aux_criterion=None, is_multimodal=True):
+    def __init__(
+        self,
+        aux_criterion=None,
+        is_multimodal=True,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ):
         super(Loss, self).__init__()
         self.aux_criterion = aux_criterion
         self.is_multimodal = is_multimodal
+        self.device = device
 
     def _convert_labels(self, time, event, breaks):
         """Convert event and time labels to label array.
@@ -79,7 +85,7 @@ class Loss(torch.nn.Module):
     def forward(self, risk, times=None, events=None, breaks=None, modality_features=None, device=None):
 
         label_array = self._convert_labels(times, events, breaks).to(device)
-        loss = self._neg_log_likelihood(risk, label_array, breaks)
+        loss = self._neg_log_likelihood(risk, label_array.to(self.device), breaks)
 
         if not self.is_multimodal and self.aux_criterion is not None:
             warnings.warn("Input data is unimodal: auxiliary" + " loss is not applicable.")
