@@ -84,8 +84,15 @@ class ClinicalNet(nn.Module):
     Handle continuous features and categorical feature embeddings.
     """
 
-    def __init__(self, output_vector_size, embedding_dims, n_continuous):
+    def __init__(
+        self,
+        output_vector_size,
+        embedding_dims,
+        n_continuous,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ):
         super(ClinicalNet, self).__init__()
+        self.device = device
         # Embedding layer
         self.embedding_layers = nn.ModuleList([nn.Embedding(x, y) for x, y in embedding_dims])
 
@@ -107,13 +114,13 @@ class ClinicalNet(nn.Module):
     def forward(self, x):
         categorical_x, continuous_x = x
 
-        categorical_x = categorical_x.to(torch.int64)
+        categorical_x = categorical_x.to(torch.int64).to(self.device)
 
         x = [emb_layer(categorical_x[:, i]) for i, emb_layer in enumerate(self.embedding_layers)]
         x = torch.cat(x, 1)
         x = self.embedding_dropout(x)
 
-        continuous_x = self.bn_layer(continuous_x)
+        continuous_x = self.bn_layer(continuous_x.to(self.device))
 
         x = torch.cat([x, continuous_x], 1)
         out = self.output_layer(self.linear(x))
@@ -124,14 +131,21 @@ class ClinicalNet(nn.Module):
 class CnvNet(nn.Module):
     """Gene copy number variation data extractor."""
 
-    def __init__(self, output_vector_size, embedding_dims, n_embeddings):
+    def __init__(
+        self,
+        output_vector_size,
+        embedding_dims,
+        n_embeddings,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ):
         super(CnvNet, self).__init__()
+        self.device = device
         self.embedding_layers = nn.ModuleList([nn.Embedding(x, y) for x, y in embedding_dims])
         # n_embeddings = 2 * 2000
         self.fc = FC(in_features=n_embeddings, out_features=output_vector_size, n_layers=5, scaling_factor=1)
 
     def forward(self, x):
-        x = x.to(torch.int64)
+        x = x.to(torch.int64).to(self.device)
 
         x = [emb_layer(x[:, i]) for i, emb_layer in enumerate(self.embedding_layers)]
         x = torch.cat(x, 1)
