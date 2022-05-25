@@ -226,6 +226,7 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
             logger.info("Set params for network")
             net.set_params(**{"lr": best_lr})
             logger.info("Fitting Network")
+
             net.fit(train_dataset, y_train)
             logger.info("Network Fitting Done")
             survival_prob = net.predict_survival_function(test_dataset)

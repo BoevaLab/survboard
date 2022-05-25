@@ -104,7 +104,7 @@ class MultiSurvModel(NeuralNet):
         # data = self._data_to_device(data)
         risk = self.predict(data)
         # check this again should be risk i guess
-        survival_prob = self._convert_to_survival(risk.cpu())
+        survival_prob = self._convert_to_survival(risk.detach().cpu())
 
         if prediction_year is not None:
             survival_prob = np.interp(
@@ -124,7 +124,7 @@ class MultiSurvModel(NeuralNet):
             # yp = yp[1] if isinstance(yp, tuple) else yp
             _, risk = yp
 
-            y.append(to_numpy(risk))
+            y.append(to_numpy(risk.detach()))
 
         ypred = torch.from_numpy(np.concatenate(y, 0))
         # self.module_.eval()
@@ -262,6 +262,6 @@ class MultiSurv(torch.nn.Module):
             modality_features = torch.stack([batch_element for batch_element in modality if batch_element.sum() != 0])
             output_features += (modality_features,)
 
-        feature_repr["modalities"] = output_features
+        feature_repr["modalities"] = output_features.detach()
 
         return feature_repr, risk
