@@ -33,7 +33,8 @@ class Loss(torch.nn.Module):
 
         for i, (t, e) in enumerate(zip(time, event)):
             # t = torch.round(t * 365)  # From years to days
-
+            t = t.to(self.device)
+            e = e.to(self.device)
             if e:  # if not censored
                 # survived time intervals where time >= upper limit
                 out[i, 0:n_intervals] = 1.0 * (t >= breaks[1:])
