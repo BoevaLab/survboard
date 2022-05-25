@@ -24,8 +24,18 @@ def freeze_layers(model, up_to_layer=None):
 class FC(nn.Module):
     "Fully-connected model to generate final output."
 
-    def __init__(self, in_features, out_features, n_layers, dropout=True, batchnorm=False, scaling_factor=4):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        n_layers,
+        dropout=True,
+        batchnorm=False,
+        scaling_factor=4,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ):
         super(FC, self).__init__()
+        self.device = device
         if n_layers == 1:
             layers = self._make_layer(in_features, out_features, dropout, batchnorm)
         elif n_layers > 1:
@@ -75,7 +85,7 @@ class FC(nn.Module):
         return n_neurons[0 if idx == 0 else idx - 1]
 
     def forward(self, x):
-        return self.fc(x)
+        return self.fc(x.to(self.device))
 
 
 class ClinicalNet(nn.Module):
