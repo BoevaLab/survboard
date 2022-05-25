@@ -244,13 +244,13 @@ class MultiSurv(torch.nn.Module):
 
         for modality in self.data_modalities:
             if self.fusion == 'late':
-                multimodal_features += (torch.nn.Sigmoid(self.submodels[modality](kwargs[modality])),)
+                multimodal_features += (self.risk_layer(self.fc_block(self.submodels[modality](kwargs[modality]))),)
             else:
                 multimodal_features += (self.submodels[modality](kwargs[modality]),)
 
         # Feature fusion/aggregation -----------------------------------------#
         if len(multimodal_features) > 1:
-            if self.fusion:
+            if self.fusion == 'late':
                 x = torch.mean(torch.stack(multimodal_features), dim=0) 
             else:
                 x = self.aggregator(torch.stack(multimodal_features)) 
