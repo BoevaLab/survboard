@@ -111,10 +111,12 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
     with open(os.path.join(save_model, "model_params.json"), "w") as f:
         json.dump(params, f)
 
+    num_intervals = params.get("num_intervals", 20)
+    output_intervals = torch.arange(0, num_intervals + 1, 1)
     logger.info(f"Starting model: {model_name}")
 
-    # for cancer in config[f"{project.lower()}_cancers"]:
-    for cancer in ["SKCM"]:
+    for cancer in config[f"{project.lower()}_cancers"]:
+        # for cancer in ["SKCM"]:
         logger.info(f"Starting cancer: {cancer}")
         input_size = {}
         data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
@@ -169,11 +171,11 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
                 criterion=Loss,
                 optimizer=torch.optim.Adam,
                 module__data_modalities=input_size,
-                module__output_intervals=params.get("output_intervals", torch.arange(0, 21, 1)),
+                module__output_intervals=output_intervals,
                 train_split=ValidSplit(10, stratified=True),
                 criterion__aux_criterion=None,
                 criterion__is_multimodal=len(input_size) > 1,
-                max_epochs=params.get("max_epochs", 1),
+                max_epochs=params.get("max_epochs", 100),
                 batch_size=params.get("batch_size", 128),
                 verbose=1,
                 callbacks=[
@@ -202,7 +204,7 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
             logger.info("Starting LR Finder")
             # LR range
             net.initialize()
-            lr_bs = 64
+            lr_bs = params.get("lr_bs", 64)
             num_batches = len(X_train) / lr_bs
             droplast = True if (num_batches - np.floor(num_batches)) * lr_bs == 1 else False
             best_lr = net.test_lr_range(
@@ -211,13 +213,13 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
                     batch_size=lr_bs,
                     drop_last=droplast,
                 ),
-                optimizer=net.optimizer(net.module_.parameters(), lr=1e-4),
+                optimizer=net.optimizer(net.module_.parameters(), lr=params.get("lr", 1e-4)),
                 criterion=net.criterion_,
                 auxiliary_criterion=None,
-                output_intervals=torch.arange(0, 21, 1),
+                output_intervals=output_intervals,
                 model=net.module_,
                 init_value=1e-6,
-                final_value=1.0,
+                final_value=10,
             )
 
             logger.info(f"Best LR Found - {best_lr}")
@@ -229,7 +231,7 @@ def main(data_dir, config_path, model_params, results_path, model_name, project)
             survival_prob = net.predict_survival_function(test_dataset)
             logger.info("Converting surv prob to df and saving")
 
-            sf_df = pd.DataFrame(survival_prob, columns=np.arange(len(net.module__output_intervals) - 1))
+            sf_df = pd.DataFrame(survival_prob, columns=np.arange(num_intervals))
             sf_df.to_csv(
                 os.path.join(
                     save_here,
