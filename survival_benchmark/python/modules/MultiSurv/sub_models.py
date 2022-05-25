@@ -1,7 +1,6 @@
 """MultiSurv sub-models."""
 
 from bisect import bisect_left
-
 import torch
 import torch.nn as nn
 

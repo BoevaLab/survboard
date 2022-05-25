@@ -22,8 +22,8 @@ class MultimodalDataset(Dataset):
         label_path: str = None,
         modalities: List[str] = ["clinical", "gex", "mirna", "cnv", "meth", "mut", "rppa"],
         dropout: int = 0,
-        categorical_encoder=OrdinalEncoder(),
-        cnv_encoder=OrdinalEncoder(),
+        # categorical_encoder=OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=np.nan),
+        # cnv_encoder=OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=np.nan),
         scaler_test: dict = None,
         mode: str = "train",
         device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
@@ -42,8 +42,8 @@ class MultimodalDataset(Dataset):
         """
         super().__init__()
 
-        self.cat_encoder = categorical_encoder
-        self.cnv_encoder = cnv_encoder
+        # self.cat_encoder = categorical_encoder
+        # self.cnv_encoder = cnv_encoder
         self.mode = mode
 
         # self.data = pd.read_csv(data_path, index_col=0)
@@ -71,17 +71,15 @@ class MultimodalDataset(Dataset):
         for modality in self.available_modalities:
             self.columns_to_subset[modality] = self.data.columns[self.data.columns.str.contains(modality)]
 
-        if "cnv" in self.available_modalities:
-            if self.mode == "train":
-                self.data[self.columns_to_subset["cnv"]] = self.cnv_encoder.fit_transform(
-                    self.data[self.columns_to_subset["cnv"]]
-                )
-            elif self.mode == "test":
-                self.data[self.columns_to_subset["cnv"]] = self.cnv_encoder.transform(
-                    self.data[self.columns_to_subset["cnv"]]
-                )
-
-        self.input_size = self.get_input_size()
+        # if "cnv" in self.available_modalities:
+        #     if self.mode == "train":
+        #         self.data[self.columns_to_subset["cnv"]] = self.cnv_encoder.fit_transform(
+        #             self.data[self.columns_to_subset["cnv"]]
+        #         )
+        #     elif self.mode == "test":
+        #         self.data[self.columns_to_subset["cnv"]] = self.cnv_encoder.transform(
+        #             self.data[self.columns_to_subset["cnv"]]
+        #         )
 
         modalities_to_scale = np.intersect1d(
             self.available_modalities, ["clinical", "gex", "mirna", "meth", "mut", "rppa"]
@@ -101,32 +99,6 @@ class MultimodalDataset(Dataset):
         ), "One or more modalities not present in the data"
         # assert all(any(self.data.columns.str.contains(m)) for m in self.available_modalities), "One or more modalities not present in the data"
 
-    def get_input_size(self):
-
-        input_size = {}
-        for modality in self.available_modalities:
-            if modality == "clinical":
-                input_size.update(
-                    {
-                        modality: {
-                            "categorical": list(map(len, self.cat_encoder.categories_)),
-                            "continuous": self.continuous.shape[1],
-                        }
-                    }
-                )
-            elif modality == "cnv":
-                input_size.update(
-                    {
-                        modality: {
-                            "categories": len(self.cnv_encoder.categories_[0]),
-                            "length": sum(self.data.columns.str.contains(modality)),
-                        }
-                    }
-                )
-            else:
-                input_size.update({modality: sum(self.data.columns.str.contains(modality))})
-        return input_size
-
     def _scale_data_train(self, modalities_to_scale):
         self.scaler = {}
         for modality in modalities_to_scale:
@@ -136,9 +108,8 @@ class MultimodalDataset(Dataset):
                     scaler.fit_transform(self.continuous), columns=self.continuous.columns, index=self.continuous.index
                 )
             else:
-                self.data[self.columns_to_subset[modality]] = scaler.fit_transform(
-                    self.data[self.columns_to_subset[modality]]
-                )
+                value = scaler.fit_transform(self.data[self.columns_to_subset[modality]])
+                self.data.loc[:, self.columns_to_subset[modality]] = value
             self.scaler.update({modality: scaler})
 
     def _scale_data_test(self, modalities_to_scale):
@@ -151,9 +122,8 @@ class MultimodalDataset(Dataset):
                     index=self.continuous.index,
                 )
             else:
-                self.data[self.columns_to_subset[modality]] = self.scaler[modality].transform(
-                    self.data[self.columns_to_subset[modality]]
-                )
+                value = self.scaler[modality].transform(self.data[self.columns_to_subset[modality]])
+                self.data.loc[:, self.columns_to_subset[modality]] = value
 
     def _get_modality(self, modality: str, patient_id: str) -> torch.Tensor:
         """Retrieve modality specific features from the merged data file.
@@ -194,14 +164,15 @@ class MultimodalDataset(Dataset):
         clinical_subset = self.data[columns_to_subset]
 
         categorical = clinical_subset.select_dtypes(include=[object])
-        categorical = categorical.astype(str)
+        categorical = categorical.astype(float)
         continuous = clinical_subset.select_dtypes(include=[int, float])
 
-        if self.mode == "train":
-            categorical = pd.DataFrame(self.cat_encoder.fit_transform(categorical), index=categorical.index)
-        elif self.mode == "test":
-            categorical = pd.DataFrame(self.cat_encoder.transform(categorical), index=categorical.index)
+        # if self.mode == "train":
+        #     categorical = pd.DataFrame(self.cat_encoder.fit_transform(categorical), index=categorical.index)
 
+        # elif self.mode == "test":
+        #     categorical = pd.DataFrame(self.cat_encoder.transform(categorical), index=categorical.index)
+        # categorical = categorical.apply(lambda x: x.fillna(np.nanmax(x) + 1))
         return categorical, continuous
 
     def _set_missing_modality(self, data: pd.DataFrame, value: float = 0.0) -> torch.Tensor:
