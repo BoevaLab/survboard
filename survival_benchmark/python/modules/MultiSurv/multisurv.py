@@ -86,7 +86,7 @@ class MultiSurvModel(NeuralNet):
             warnings.warn(f"Data dropout set to {dropout} in input dataset")
 
     def _convert_to_survival(self, conditional_probabilities):
-        return np.cumprod(conditional_probabilities)
+        return np.cumprod(conditional_probabilities, 1)
 
     def predict_survival_function(self, data, prediction_year=None, intervals=None):
         """Predict patient survival probability at provided time point.
