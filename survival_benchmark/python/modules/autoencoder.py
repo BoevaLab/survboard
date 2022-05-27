@@ -119,8 +119,8 @@ class Decoder(nn.Module):
 
 
 class DAE(MultiModalDropout):
-    def __init__(self, params, blocks, missing_modalities="impute", noise_factor=0, alpha=0.1) -> None:
-        super().__init__(blocks)
+    def __init__(self, params, blocks, missing_modalities="impute", p_multimodal_dropout=0.0, noise_factor=0, alpha=0.1) -> None:
+        super().__init__(blocks=blocks, p_multimodal_dropout=p_multimodal_dropout)
 
         self.alpha = alpha
         self.noise_factor = noise_factor
