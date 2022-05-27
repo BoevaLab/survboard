@@ -36,7 +36,7 @@ class FCBlock(nn.Module):
 
         self.activation = params.get("fc_activation", ["relu", "None"])
         self.dropout = params.get("fc_dropout", 0.5)
-        self.batchnorm = eval(params.get("fc_batchnorm", "False"))
+        self.batchnorm = eval(params.get("fc_batchnorm", "True"))
         self.bias_last = eval(params.get("last_layer_bias", "True"))
         bias = [True] * (self.layers - 1) + [self.bias_last]
 
@@ -68,7 +68,7 @@ class FCBlock(nn.Module):
         modules = []
         self.hidden_units = [self.input_size] + self.hidden_size
         for layer in range(self.layers):
-            modules.append(nn.Linear(self.hidden_units[layer], self.hidden_units[layer + 1], bias=bias[layer]))
+            modules.append(nn.Linear(int(self.hidden_units[layer]), int(self.hidden_units[layer + 1]), bias=bias[layer]))
             if self.activation[layer] != "None":
                 modules.append(ACTIVATION_FN_FACTORY[self.activation[layer]])
             if self.dropout > 0:
@@ -153,7 +153,7 @@ class DAE(MultiModalDropout):
         self.hazard = FCBlock(fc_params)
 
     def forward(self, x):
-        x = self.impute(x)
+        x = self.zero_impute(x)
         x_dropout = self.multimodal_dropout(x)
         x_noisy = x_dropout + (self.noise_factor * torch.normal(mean=0.0, std=1, size=x_dropout.shape))
         encoded = self.encoder(x_noisy)
@@ -166,5 +166,5 @@ class dae_criterion(nn.Module):
     def forward(self, predicted, target, alpha):
         time, event = target[:, 0], target[:, 1]
         cox_loss = negative_partial_log_likelihood(predicted[0], time, event)
-        reconstruction_loss = torch.nn.MSE(predicted[1], predicted[2])
+        reconstruction_loss = torch.nn.MSELoss()(predicted[1], predicted[2])
         return alpha * cox_loss + reconstruction_loss

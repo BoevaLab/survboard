@@ -25,6 +25,7 @@ class IntermediateFusionMean(MultiModalDropout):
         self.alpha = alpha
         self.latent_dim = params.get("latent_dim", 64)
         block_encoder = []
+        params.update({"input_size": [len(i) for i in blocks]})
         for i in range(len(blocks)):
             params_mod = params.copy()
             params_mod.update({"input_size": params["input_size"][i]})
@@ -125,7 +126,7 @@ class IntermediateFusionPoE(MultiModalDropout):
                 FCBlock(
                     params={
                         "input_size": len(blocks[i]),
-                        "fc_layers": params.get("encoder_fc_layers", 1),
+                        "fc_layers": params.get("encoder_fc_layers", 2),
                         "fc_units": params.get("encoder_fc_units", [128, 128]),
                         "fc_activation": params.get(
                             "fc_activation", ["relu", "None"]
@@ -155,6 +156,7 @@ class IntermediateFusionPoE(MultiModalDropout):
                         ),
                         "fc_batchnorm": params.get("fc_batchnorm", "True"),
                         "fc_dropout": params.get("fc_dropout", 0.5),
+                        "last_layer_bias": params.get("hazard_fc_last_layer_bias", "False")
                     }
                 )
             ]
@@ -166,8 +168,8 @@ class IntermediateFusionPoE(MultiModalDropout):
                 / 2,
                 "fc_layers": params.get("hazard_fc_layers", 2),
                 "fc_units": params.get("hazard_fc_units", [32, 1]),
-                "fc_last_layer_bias": params.get(
-                    "hazard_fc_last_layer_bias", False
+                "last_layer_bias": params.get(
+                    "hazard_fc_last_layer_bias", "False"
                 ),
                 "fc_activation": params.get("fc_activation", ["relu", "None"]),
                 "fc_batchnorm": params.get("fc_batchnorm", "True"),
@@ -214,12 +216,16 @@ class IntermediateFusionPoE(MultiModalDropout):
         return mask
 
     def forward(self, x):
-        x = self.impute(x)
+        #x = self.zero_impute(x)
         mask = torch.ones((x.shape[0], len(self.blocks)))
         if self.missing_modalities == "multimodal_dropout":
+            x = self.zero_impute(x)
             x = self.multimodal_dropout(x)
+        elif self.missing_modalities == "impute":
+            x = self.zero_impute(x)
         elif self.missing_modalities == "poe":
             mask = self.find_missing_modality_mask(x, self.blocks)
+            x = self.zero_impute(x)
 
         mu = []
         log_var = []
