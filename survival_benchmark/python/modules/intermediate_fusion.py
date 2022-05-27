@@ -2,6 +2,7 @@ from ast import Mult
 import torch
 from survival_benchmark.python.modules.autoencoder import FCBlock, Encoder, Decoder
 from survival_benchmark.python.utils.utils import MultiModalDropout
+from survival_benchmark.python.utils.utils import negative_partial_log_likelihood
 
 
 class IntermediateFusionMean(MultiModalDropout):
@@ -12,6 +13,7 @@ class IntermediateFusionMean(MultiModalDropout):
         p_multimodal_dropout=0.0,
         upweight=True,
         fusion="mean",
+        alpha=0,
     ) -> None:
         super().__init__(
             blocks=blocks,
@@ -20,6 +22,7 @@ class IntermediateFusionMean(MultiModalDropout):
         )
 
         # self.params = params
+        self.alpha = alpha
         self.latent_dim = params.get("latent_dim", 64)
         block_encoder = []
         for i in range(len(blocks)):
@@ -82,6 +85,22 @@ class IntermediateFusionMean(MultiModalDropout):
 
         joint_log_hazard = self.joint_log_hazard(joint_embedding)
         return joint_log_hazard, unimodal_log_hazards
+
+
+class intermean_criterion(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, predictions, target, alpha=0):
+        joint_log_hazard, unimodal_log_hazards = predictions
+        time, event = target[:, 0], target[:, 1]
+        unicox = 0
+        for i in range(len(unimodal_log_hazards)):
+            unicox += negative_partial_log_likelihood(unimodal_log_hazards[i], time, event)
+
+        joint_cox = negative_partial_log_likelihood(joint_log_hazard, time, event)
+
+        return joint_cox + alpha * unicox
 
 
 class IntermediateFusionPoE(MultiModalDropout):
