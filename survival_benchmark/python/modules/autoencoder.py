@@ -3,7 +3,7 @@ import torch.nn as nn
 from survival_benchmark.python.utils.hyperparameters import ACTIVATION_FN_FACTORY
 
 from survival_benchmark.python.utils.utils import MultiModalDropout
-from survival_benchmark.python.utils.utils import cox_criterion
+from survival_benchmark.python.utils.utils import negative_partial_log_likelihood
 
 
 class FCBlock(nn.Module):
@@ -163,7 +163,8 @@ class DAE(MultiModalDropout):
 
 
 class dae_criterion(nn.Module):
-    def forward(self, predicted, target):
-        cox_loss = cox_criterion(predicted[0], target)
+    def forward(self, predicted, target, alpha):
+        time, event = target[:, 0], target[:, 1]
+        cox_loss = negative_partial_log_likelihood(predicted[0], time, event)
         reconstruction_loss = torch.nn.MSE(predicted[1], predicted[2])
-        return self.alpha * cox_loss + reconstruction_loss
+        return alpha * cox_loss + reconstruction_loss
