@@ -119,8 +119,8 @@ class Decoder(nn.Module):
 
 
 class DAE(MultiModalDropout):
-    def __init__(self, params, noise_factor=0, alpha=0.1) -> None:
-        super().__init__()
+    def __init__(self, params, blocks, noise_factor=0, alpha=0.1) -> None:
+        super().__init__(blocks)
 
         self.alpha = alpha
         self.noise_factor = noise_factor
@@ -128,7 +128,7 @@ class DAE(MultiModalDropout):
         self.input_size = params.get("input_size")
         self.latent_dim = params.get("latent_dim")
         self.hidden_units = params.get("fc_units")
-
+        self.params = params
         self.encoder = Encoder(params)
 
         self.params.update(
@@ -136,6 +136,7 @@ class DAE(MultiModalDropout):
                 "input_size": self.latent_dim,
                 "latent_dim": self.input_size,
                 "fc_units": self.hidden_units[-2::-1],
+                "scaling_factor": 2,
             }
         )
 
@@ -144,9 +145,9 @@ class DAE(MultiModalDropout):
         fc_params = {
             "input_size": self.latent_dim,
             "latent_dim": 1,
-            "last_layer_bias": False,
+            "last_layer_bias": "False",
             "n_layers": 2,
-            "fc_units": [(self.latent_dim / 2), 1],
+            "fc_units": [int(self.latent_dim / 2), 1],
         }
 
         self.hazard = FCBlock(fc_params)
