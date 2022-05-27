@@ -119,11 +119,12 @@ class Decoder(nn.Module):
 
 
 class DAE(MultiModalDropout):
-    def __init__(self, params, blocks, noise_factor=0, alpha=0.1) -> None:
+    def __init__(self, params, blocks, missing_modalities="impute", noise_factor=0, alpha=0.1) -> None:
         super().__init__(blocks)
 
         self.alpha = alpha
         self.noise_factor = noise_factor
+        self.missing_modalities = missing_modalities
 
         self.input_size = params.get("input_size")
         self.latent_dim = params.get("latent_dim")
@@ -154,7 +155,9 @@ class DAE(MultiModalDropout):
 
     def forward(self, x):
         x = self.zero_impute(x)
-        x_dropout = self.multimodal_dropout(x)
+        x_dropout = x
+        if self.missing_modalities == "multimodal_dropout":
+            x_dropout = self.multimodal_dropout(x)
         x_noisy = x_dropout + (self.noise_factor * torch.normal(mean=0.0, std=1, size=x_dropout.shape))
         encoded = self.encoder(x_noisy)
         decoded = self.decoder(encoded)
