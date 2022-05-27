@@ -154,15 +154,14 @@ def inverse_transform_survival_function(y):
 def negative_partial_log_likelihood_loss(
     y,
     predicted_log_hazard_ratio,
+    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ):
     (
         observed_survival_time,
         observed_event_indicator,
     ) = inverse_transform_survival_target(y)
-    observed_survival_time = torch.tensor(observed_survival_time)
-    observed_event_indicator = torch.tensor(observed_event_indicator)
-    if not isinstance(predicted_log_hazard_ratio, torch.Tensor):
-        predicted_log_hazard_ratio = torch.tensor(predicted_log_hazard_ratio)
+    observed_survival_time = torch.tensor(observed_survival_time).to(device)
+    observed_event_indicator = torch.tensor(observed_event_indicator).to(device)
     return negative_partial_log_likelihood(
         predicted_log_hazard_ratio,
         observed_survival_time,
@@ -180,16 +179,6 @@ def negative_partial_log_likelihood(
     observed_survival_time = observed_survival_time.to(device)
     predicted_log_hazard_ratio = predicted_log_hazard_ratio.to(device)
     risk_matrix = create_risk_matrix(observed_survival_time).to(device)
-    # print(torch.reshape(observed_event_indicator.float(), (0, 1)).shape)
-    # print(predicted_log_hazard_ratio.shape)
-    # print(
-    #                 torch.log(torch.sum(
-    #                     risk_matrix * torch.exp(predicted_log_hazard_ratio),
-    #                     axis=1,
-    #                 )).shape)
-
-    # diff = predicted_log_hazard_ratio -torch.log(risk_matrix.float().mm(torch.exp(predicted_log_hazard_ratio)))
-    # print(torch.transpose(diff, 0, 1).mm(observed_event_indicator))
     return -torch.sum(
         observed_event_indicator.float().squeeze()
         * (
@@ -261,13 +250,34 @@ class cheerla_et_al_criterion(nn.Module):
         similarity_loss_ = similarity_loss(encoded_blocks, M)
         return cox_loss + similarity_loss_
 
+def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=1):
+    """
+    Calculate the average Cox negative partial log-likelihood
+    Input:
+        pred: linear predictors from trained model.
+        survival_time: survival time from ground truth
+        survival_event: survival event from ground truth: 1 for event and 0 for censored
+    Output:
+        cost: the survival cost to be minimized
+    """
+    n_observed = survival_event.sum(0)
+    R_matrix = create_risk_matrix(survival_time).float()
+    R_matrix = torch.Tensor(R_matrix)
+    if cuda:
+        R_matrix = R_matrix.cuda()
+    risk_set_sum = R_matrix.mm(torch.exp(pred))
+    diff = pred - torch.log(risk_set_sum)
+    sum_diff_in_observed = torch.transpose(diff, 0, 1).mm(survival_event)
+    loss = (- (sum_diff_in_observed)/ n_observed ).reshape((-1, ))
+    return loss
 
 class cox_criterion(nn.Module):
     def forward(self, prediction, target):
         time, event = inverse_transform_survival_target(target)
         log_hazard_ratio = prediction
         cox_loss = negative_partial_log_likelihood(
-            log_hazard_ratio, torch.tensor(time), torch.tensor(event)
+            #log_hazard_ratio, torch.tensor(time), torch.tensor(event)
+            log_hazard_ratio, torch.unsqueeze(torch.tensor(time.astype(np.float32)), 1), torch.unsqueeze(torch.tensor(event.astype(np.float32)), 1), 0
         )
         return cox_loss
 
