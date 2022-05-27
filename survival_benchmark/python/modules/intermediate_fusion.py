@@ -1,45 +1,106 @@
+from ast import Mult
 import torch
-from survival_benchmark.python.modules.autoencoder import FCBlock
+from survival_benchmark.python.modules.autoencoder import FCBlock, Encoder, Decoder
+from survival_benchmark.python.utils.utils import MultiModalDropout
+from survival_benchmark.python.utils.utils import negative_partial_log_likelihood
 
 
-class ZeroImputation(torch.nn.Module):
-    def impute(self, x):
-        return torch.nan_to_num(x, nan=0.0)
-
-
-def multimodal_dropout(x, p_multimodal_dropout, blocks, upweight=True):
-    for block in blocks:
-        if not torch.all(x[:, block] == 0):
-            msk = torch.where(
-                (torch.rand(x.shape[0]) <= p_multimodal_dropout).long()
-            )[0]
-            x[:, torch.tensor(block)][msk, :] = torch.zeros(
-                x[:, torch.tensor(block)][msk, :].shape
-            )
-
-    if upweight:
-        x = x / (1 - p_multimodal_dropout)
-    return x
-
-
-class MultiModalDropout(ZeroImputation):
+class IntermediateFusionMean(MultiModalDropout):
     def __init__(
-        self, blocks, p_multimodal_dropout=0.0, upweight=True
+        self,
+        params: dict,
+        blocks,
+        p_multimodal_dropout=0.0,
+        upweight=True,
+        fusion="mean",
+        alpha=0,
     ) -> None:
-        super().__init__()
+        super().__init__(
+            blocks=blocks,
+            p_multimodal_dropout=p_multimodal_dropout,
+            upweight=upweight,
+        )
+
+        # self.params = params
+        self.alpha = alpha
+        self.latent_dim = params.get("latent_dim", 64)
+        block_encoder = []
+        for i in range(len(blocks)):
+            params_mod = params.copy()
+            params_mod.update({"input_size": params["input_size"][i]})
+
+            block_encoder += [Encoder(params_mod)]
+
+        self.block_encoder = torch.nn.ModuleList(block_encoder)
+
+        self.unimodal_log_hazards = torch.nn.ModuleList(
+            [
+                FCBlock(
+                    params={
+                        "input_size": self.latent_dim,
+                        "fc_layers": 2,
+                        "fc_units": [int(self.latent_dim / 2), 1],
+                        "fc_activation": ["relu", "None"],
+                        "fc_batchnorm": "True",
+                        "last_layer_bias": "False",
+                    }
+                )
+            ]
+            * len(blocks)
+        )
+
+        self.joint_log_hazard = FCBlock(
+            params={
+                "input_size": self.latent_dim,
+                "fc_layers": 2,
+                "fc_units": [int(self.latent_dim / 2), 1],
+                "fc_activation": ["relu", "None"],
+                "fc_batchnorm": "True",
+                "last_layer_bias": "False",
+            }
+        )
+
         self.blocks = blocks
         self.p_multimodal_dropout = p_multimodal_dropout
         self.upweight = upweight
+        self.fusion = fusion
 
-    def multimodal_dropout(self, x):
-        if self.p_multimodal_dropout > 0 and self.training:
-            x = multimodal_dropout(
-                x=x,
-                blocks=self.blocks,
-                p_multimodal_dropout=self.p_multimodal_dropout,
-                upweight=self.upweight,
-            )
-        return x
+    def forward(self, x):
+
+        x = self.multimodal_dropout(self.zero_impute(x))
+
+        stacked_embedding = torch.stack(
+            [self.block_encoder[i](x[:, self.blocks[i]]) for i in range(len(self.blocks))],
+            axis=1,
+        )
+        assert stacked_embedding.shape[1] == len(self.blocks), print(stacked_embedding.shape)
+        if self.fusion == "mean":
+            joint_embedding = torch.mean(stacked_embedding, axis=1)
+        else:
+            joint_embedding = torch.max(stacked_embedding, axis=1)
+
+        unimodal_log_hazards = []
+        for i in range(len(self.blocks)):
+            unimodal_log_hazards.append(self.unimodal_log_hazards[i](stacked_embedding[:, i, :]))
+
+        joint_log_hazard = self.joint_log_hazard(joint_embedding)
+        return joint_log_hazard, unimodal_log_hazards
+
+
+class intermean_criterion(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, predictions, target, alpha=0):
+        joint_log_hazard, unimodal_log_hazards = predictions
+        time, event = target[:, 0], target[:, 1]
+        unicox = 0
+        for i in range(len(unimodal_log_hazards)):
+            unicox += negative_partial_log_likelihood(unimodal_log_hazards[i], time, event)
+
+        joint_cox = negative_partial_log_likelihood(joint_log_hazard, time, event)
+
+        return joint_cox + alpha * unicox
 
 
 class IntermediateFusionPoE(MultiModalDropout):
@@ -191,9 +252,7 @@ class IntermediateFusionPoE(MultiModalDropout):
         unimodal_posteriors = [None] * len(self.blocks)
         unimodal_log_hazard = [None] * len(self.blocks)
         for ix in range(len(mu)):
-            unimodal_posterior_distributions[
-                ix
-            ] = torch.distributions.normal.Normal(
+            unimodal_posterior_distributions[ix] = torch.distributions.normal.Normal(
                 mu[ix], torch.sqrt(torch.exp(log_var[ix]))
             )
             unimodal_posteriors[ix] = unimodal_posterior_distributions[

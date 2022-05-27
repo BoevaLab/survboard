@@ -16,6 +16,49 @@ from skorch.dataset import get_len, ValidSplit
 from sklearn.model_selection import StratifiedKFold
 
 
+# class ZeroImputation(torch.nn.Module):
+#     def __init__(self) -> None:
+#         super().__init__()
+
+#     def impute(self, x):
+#         return torch.nan_to_num(x, nan=0.0)
+
+#     def forward(self):
+#         pass
+
+
+def multimodal_dropout(x, p_multimodal_dropout, blocks, upweight=True):
+    for block in blocks:
+        if not torch.all(x[:, block] == 0):
+            msk = torch.where((torch.rand(x.shape[0]) <= p_multimodal_dropout).long())[0]
+            x[:, torch.tensor(block)][msk, :] = torch.zeros(x[:, torch.tensor(block)][msk, :].shape)
+
+    if upweight:
+        x = x / (1 - p_multimodal_dropout)
+    return x
+
+
+class MultiModalDropout(torch.nn.Module):
+    def __init__(self, blocks, p_multimodal_dropout=0.0, upweight=True) -> None:
+        super().__init__()
+        self.blocks = blocks
+        self.p_multimodal_dropout = p_multimodal_dropout
+        self.upweight = upweight
+
+    def zero_impute(self, x):
+        return torch.nan_to_num(x, nan=0.0)
+
+    def multimodal_dropout(self, x):
+        if self.p_multimodal_dropout > 0 and self.training:
+            x = multimodal_dropout(
+                x=x,
+                blocks=self.blocks,
+                p_multimodal_dropout=self.p_multimodal_dropout,
+                upweight=self.upweight,
+            )
+        return x
+
+
 def create_risk_matrix(observed_survival_time):
     observed_survival_time = observed_survival_time.squeeze()
     return (
@@ -163,11 +206,7 @@ def inverse_transform_survival_function(y):
 
 
 def negative_partial_log_likelihood_loss(
-    y,
-    predicted_log_hazard_ratio,
-    device: torch.device = torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu"
-    ),
+    y, predicted_log_hazard_ratio, device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ):
     (
         observed_survival_time,

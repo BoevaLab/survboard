@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 from survival_benchmark.python.utils.hyperparameters import ACTIVATION_FN_FACTORY
 
+from survival_benchmark.python.utils.utils import MultiModalDropout
+from survival_benchmark.python.utils.utils import negative_partial_log_likelihood
+
 
 class FCBlock(nn.Module):
     """Generalisable DNN module to allow for flexibility in architecture."""
@@ -19,6 +22,7 @@ class FCBlock(nn.Module):
                     for options.
                 fc_batchnorm (bool): Whether to include a batchnorm layer.
                 fc_dropout (float): Probability of dropout applied after eacch layer.
+                last_layer_bias (bool): True if bias should be applied in the last layer, False otherwise. Default True.
 
         """
         super(FCBlock, self).__init__()
@@ -33,9 +37,11 @@ class FCBlock(nn.Module):
         self.activation = params.get("fc_activation", ["relu", "None"])
         self.dropout = params.get("fc_dropout", 0.5)
         self.batchnorm = eval(params.get("fc_batchnorm", "False"))
+        self.bias_last = eval(params.get("last_layer_bias", "True"))
+        bias = [True] * (self.layers - 1) + [self.bias_last]
 
         if len(self.hidden_size) != self.layers and self.scaling_factor is not None:
-            hidden_size_generated = []
+            hidden_size_generated = [self.input_size]
             # factor = (self.reduction_factor - 1) / self.reduction_factor
             for layer in range(self.layers):
                 try:
@@ -44,9 +50,9 @@ class FCBlock(nn.Module):
                     if layer == self.layers - 1:
                         hidden_size_generated.append(self.latent_dim)
                     else:
-                        hidden_size_generated.append(hidden_size_generated[-1] * self.scaling_factor)
+                        hidden_size_generated.append(int(hidden_size_generated[-1] * self.scaling_factor))
 
-            self.hidden_size = hidden_size_generated
+            self.hidden_size = hidden_size_generated[1:]
 
         if len(self.activation) != self.layers:
             if len(self.activation) == 2:
@@ -62,13 +68,15 @@ class FCBlock(nn.Module):
         modules = []
         self.hidden_units = [self.input_size] + self.hidden_size
         for layer in range(self.layers):
-            modules.append(nn.Linear(int(self.hidden_units[layer]), int(self.hidden_units[layer + 1])))
+            modules.append(nn.Linear(self.hidden_units[layer], self.hidden_units[layer + 1], bias=bias[layer]))
             if self.activation[layer] != "None":
                 modules.append(ACTIVATION_FN_FACTORY[self.activation[layer]])
             if self.dropout > 0:
-                modules.append(nn.Dropout(self.dropout))
+                if layer < self.layers - 1:
+                    modules.append(nn.Dropout(self.dropout))
             if self.batchnorm:
-                modules.append(nn.BatchNorm1d(self.hidden_units[layer + 1]))
+                if layer < self.layers - 1:
+                    modules.append(nn.BatchNorm1d(self.hidden_units[layer + 1]))
         self.model = nn.Sequential(*modules)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -104,16 +112,59 @@ class Decoder(nn.Module):
         super().__init__()
         self.device = device
         self.dec_params = params
-
-        # update based on enc params in AE class
-        # self.dec_params.update(
-        #     {
-        #         "input_size": self.latent_dim,
-        #         "latent_dim": self.input_size,
-        #         "fc_units": self.hidden_units[-2::-1],
-        #     }
-        # )
         self.decoder = FCBlock(self.dec_params)
 
     def forward(self, x):
         return self.decoder(x)
+
+
+class DAE(MultiModalDropout):
+    def __init__(self, params, blocks, noise_factor=0, alpha=0.1) -> None:
+        super().__init__(blocks)
+
+        self.alpha = alpha
+        self.noise_factor = noise_factor
+
+        self.input_size = params.get("input_size")
+        self.latent_dim = params.get("latent_dim")
+        self.hidden_units = params.get("fc_units")
+        self.params = params
+        self.encoder = Encoder(params)
+
+        self.params.update(
+            {
+                "input_size": self.latent_dim,
+                "latent_dim": self.input_size,
+                "fc_units": self.hidden_units[-2::-1],
+                "scaling_factor": 2,
+            }
+        )
+
+        self.decoder = Decoder(params)
+
+        fc_params = {
+            "input_size": self.latent_dim,
+            "latent_dim": 1,
+            "last_layer_bias": "False",
+            "n_layers": 2,
+            "fc_units": [int(self.latent_dim / 2), 1],
+        }
+
+        self.hazard = FCBlock(fc_params)
+
+    def forward(self, x):
+        x = self.impute(x)
+        x_dropout = self.multimodal_dropout(x)
+        x_noisy = x_dropout + (self.noise_factor * torch.normal(mean=0.0, std=1, size=x_dropout.shape))
+        encoded = self.encoder(x_noisy)
+        decoded = self.decoder(encoded)
+        log_hazard = self.hazard(encoded)
+        return log_hazard, x, decoded
+
+
+class dae_criterion(nn.Module):
+    def forward(self, predicted, target, alpha):
+        time, event = target[:, 0], target[:, 1]
+        cox_loss = negative_partial_log_likelihood(predicted[0], time, event)
+        reconstruction_loss = torch.nn.MSE(predicted[1], predicted[2])
+        return alpha * cox_loss + reconstruction_loss
