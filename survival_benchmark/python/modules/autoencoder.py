@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from survival_benchmark.python.utils.hyperparameters import ACTIVATION_FN_FACTORY
 
-from survival_benchmark.python.modules.intermediate_fusion import MultiModalDropout
+from survival_benchmark.python.utils.utils import MultiModalDropout
 from survival_benchmark.python.utils.utils import cox_criterion
 
 
@@ -32,13 +32,13 @@ class FCBlock(nn.Module):
 
         self.hidden_size = params.get("fc_units", [128, 64])
         self.layers = params.get("fc_layers", 2)
-        self.scaling_factor = eval(params.get("scaling_factor", 0.5))
+        self.scaling_factor = params.get("scaling_factor", 0.5)
 
         self.activation = params.get("fc_activation", ["relu", "None"])
         self.dropout = params.get("fc_dropout", 0.5)
         self.batchnorm = eval(params.get("fc_batchnorm", "False"))
-        self.bias_last = eval(params.get("last_layer_bias","True"))
-        bias = [True]*(self.layers-1) + [self.bias_last]
+        self.bias_last = eval(params.get("last_layer_bias", "True"))
+        bias = [True] * (self.layers - 1) + [self.bias_last]
 
         if len(self.hidden_size) != self.layers and self.scaling_factor is not None:
             hidden_size_generated = [self.input_size]
@@ -50,17 +50,17 @@ class FCBlock(nn.Module):
                     if layer == self.layers - 1:
                         hidden_size_generated.append(self.latent_dim)
                     else:
-                        hidden_size_generated.append(hidden_size_generated[-1] * self.scaling_factor)
+                        hidden_size_generated.append(int(hidden_size_generated[-1] * self.scaling_factor))
 
             self.hidden_size = hidden_size_generated[1:]
 
         if len(self.activation) != self.layers:
             if len(self.activation) == 2:
                 first, last = self.activation
-                self.activation = [first] * len(self.layers - 1) + [last]
+                self.activation = [first] * (self.layers - 1) + [last]
 
             elif len(self.activation) == 1:
-                self.activation = self.activation * len(self.layers)
+                self.activation = self.activation * self.layers
 
             else:
                 raise ValueError
@@ -68,13 +68,15 @@ class FCBlock(nn.Module):
         modules = []
         self.hidden_units = [self.input_size] + self.hidden_size
         for layer in range(self.layers):
-            modules.append(nn.Linear(self.hidden_units[layer], self.hidden_units[layer + 1],bias=bias[layer]))
+            modules.append(nn.Linear(self.hidden_units[layer], self.hidden_units[layer + 1], bias=bias[layer]))
             if self.activation[layer] != "None":
                 modules.append(ACTIVATION_FN_FACTORY[self.activation[layer]])
             if self.dropout > 0:
-                modules.append(nn.Dropout(self.dropout))
+                if layer < self.layers - 1:
+                    modules.append(nn.Dropout(self.dropout))
             if self.batchnorm:
-                modules.append(nn.BatchNorm1d(self.hidden_units[layer + 1]))
+                if layer < self.layers - 1:
+                    modules.append(nn.BatchNorm1d(self.hidden_units[layer + 1]))
         self.model = nn.Sequential(*modules)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -115,23 +117,20 @@ class Decoder(nn.Module):
     def forward(self, x):
         return self.decoder(x)
 
+
 class DAE(MultiModalDropout):
-    def __init__(self,
-        params,
-        noise_factor=0,
-        alpha=0.1
-    ) -> None:
+    def __init__(self, params, noise_factor=0, alpha=0.1) -> None:
         super().__init__()
 
         self.alpha = alpha
         self.noise_factor = noise_factor
-        
+
         self.input_size = params.get("input_size")
         self.latent_dim = params.get("latent_dim")
         self.hidden_units = params.get("fc_units")
 
         self.encoder = Encoder(params)
-        
+
         self.params.update(
             {
                 "input_size": self.latent_dim,
@@ -141,29 +140,29 @@ class DAE(MultiModalDropout):
         )
 
         self.decoder = Decoder(params)
-        
+
         fc_params = {
             "input_size": self.latent_dim,
             "latent_dim": 1,
             "last_layer_bias": False,
             "n_layers": 2,
-            "fc_units": [(self.latent_dim/2), 1]
+            "fc_units": [(self.latent_dim / 2), 1],
         }
 
         self.hazard = FCBlock(fc_params)
-        
+
     def forward(self, x):
         x = self.impute(x)
         x_dropout = self.multimodal_dropout(x)
-        x_noisy = x_dropout+(self.noise_factor*torch.normal(mean=0.0, std=1, size=x_dropout.shape)) 
+        x_noisy = x_dropout + (self.noise_factor * torch.normal(mean=0.0, std=1, size=x_dropout.shape))
         encoded = self.encoder(x_noisy)
         decoded = self.decoder(encoded)
         log_hazard = self.hazard(encoded)
         return log_hazard, x, decoded
-    
+
+
 class dae_criterion(nn.Module):
     def forward(self, predicted, target):
         cox_loss = cox_criterion(predicted[0], target)
         reconstruction_loss = torch.nn.MSE(predicted[1], predicted[2])
-        return self.alpha * cox_loss + reconstruction_loss 
-
+        return self.alpha * cox_loss + reconstruction_loss

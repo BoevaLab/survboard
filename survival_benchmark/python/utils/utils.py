@@ -15,6 +15,49 @@ from skorch.dataset import get_len, ValidSplit
 from sklearn.model_selection import StratifiedKFold
 
 
+# class ZeroImputation(torch.nn.Module):
+#     def __init__(self) -> None:
+#         super().__init__()
+
+#     def impute(self, x):
+#         return torch.nan_to_num(x, nan=0.0)
+
+#     def forward(self):
+#         pass
+
+
+def multimodal_dropout(x, p_multimodal_dropout, blocks, upweight=True):
+    for block in blocks:
+        if not torch.all(x[:, block] == 0):
+            msk = torch.where((torch.rand(x.shape[0]) <= p_multimodal_dropout).long())[0]
+            x[:, torch.tensor(block)][msk, :] = torch.zeros(x[:, torch.tensor(block)][msk, :].shape)
+
+    if upweight:
+        x = x / (1 - p_multimodal_dropout)
+    return x
+
+
+class MultiModalDropout(torch.nn.Module):
+    def __init__(self, blocks, p_multimodal_dropout=0.0, upweight=True) -> None:
+        super().__init__()
+        self.blocks = blocks
+        self.p_multimodal_dropout = p_multimodal_dropout
+        self.upweight = upweight
+
+    def zero_impute(self, x):
+        return torch.nan_to_num(x, nan=0.0)
+
+    def multimodal_dropout(self, x):
+        if self.p_multimodal_dropout > 0 and self.training:
+            x = multimodal_dropout(
+                x=x,
+                blocks=self.blocks,
+                p_multimodal_dropout=self.p_multimodal_dropout,
+                upweight=self.upweight,
+            )
+        return x
+
+
 def create_risk_matrix(observed_survival_time):
     observed_survival_time = observed_survival_time.squeeze()
     return (
@@ -146,9 +189,7 @@ def inverse_transform_survival_function(y):
 
 
 def negative_partial_log_likelihood_loss(
-    y,
-    predicted_log_hazard_ratio,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    y, predicted_log_hazard_ratio, device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ):
     (
         observed_survival_time,
@@ -237,6 +278,7 @@ class cheerla_et_al_criterion(nn.Module):
         similarity_loss_ = similarity_loss(encoded_blocks, M)
         return cox_loss + similarity_loss_
 
+
 def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=1):
     """
     Calculate the average Cox negative partial log-likelihood
@@ -255,8 +297,9 @@ def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=1):
     risk_set_sum = R_matrix.mm(torch.exp(pred))
     diff = pred - torch.log(risk_set_sum)
     sum_diff_in_observed = torch.transpose(diff, 0, 1).mm(survival_event)
-    loss = (- (sum_diff_in_observed)/ n_observed ).reshape((-1, ))
+    loss = (-(sum_diff_in_observed) / n_observed).reshape((-1,))
     return loss
+
 
 class cox_criterion(nn.Module):
     def forward(self, prediction, target):
