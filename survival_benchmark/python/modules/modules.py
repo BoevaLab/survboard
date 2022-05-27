@@ -1,5 +1,7 @@
 import torch
 import torch.nn.functional as F
+from skorch.utils import to_tensor
+
 from skorch.net import NeuralNet
 from sksurv.linear_model.coxph import BreslowEstimator
 from torch import nn
@@ -75,7 +77,6 @@ class DeepSurv(nn.Module):
         self.activation = activation
         self.p_dropout = p_dropout
 
-
     def forward(self, x):
         return self.log_hazard(x)
 
@@ -110,6 +111,36 @@ class GDP(nn.Module):
 
 
 class CoxPHNet(BaseSurvivalNeuralNet):
+    def get_loss(self, y_pred, y_true, X=None, training=False):
+        """Return the loss for this batch.
+        Parameters
+        ----------
+        y_pred : torch tensor
+          Predicted target values
+        y_true : torch tensor
+          True target values.
+        X : input data, compatible with skorch.dataset.Dataset
+          By default, you should be able to pass:
+            * numpy arrays
+            * torch tensors
+            * pandas DataFrame or Series
+            * scipy sparse CSR matrices
+            * a dictionary of the former three
+            * a list/tuple of the former three
+            * a Dataset
+          If this doesn't work with your data, you have to pass a
+          ``Dataset`` that can deal with the data.
+        training : bool (default=False)
+          Whether train mode should be used or not.
+        """
+        time, event = inverse_transform_survival_target(y_true)
+        time = to_tensor(time, device=self.device)
+        event = to_tensor(time, device=self.device)
+        y_true = torch.stack([time, event], axis=1)
+        return self.criterion_(
+            y_pred, y_true
+        )
+
     def fit(self, X, y=None, **fit_params):
         if not self.warm_start or not self.initialized_:
             self.initialize()
@@ -130,12 +161,61 @@ class CoxPHNet(BaseSurvivalNeuralNet):
 
     def predict_survival_function(self, X):
         log_hazard_ratios = self.forward(X)
-        survival_function = self.breslow.get_survival_function(log_hazard_ratios)
+        survival_function = self.breslow.get_survival_function(
+            log_hazard_ratios
+        )
         return survival_function
 
     def predict(self, X):
         log_hazard_ratios = self.forward(X)
         return log_hazard_ratios
+
+
+class PoENet(CoxPHNet):
+    def get_loss(self, y_pred, y_true, X=None, training=False):
+        """Return the loss for this batch.
+        Parameters
+        ----------
+        y_pred : torch tensor
+          Predicted target values
+        y_true : torch tensor
+          True target values.
+        X : input data, compatible with skorch.dataset.Dataset
+          By default, you should be able to pass:
+            * numpy arrays
+            * torch tensors
+            * pandas DataFrame or Series
+            * scipy sparse CSR matrices
+            * a dictionary of the former three
+            * a list/tuple of the former three
+            * a Dataset
+          If this doesn't work with your data, you have to pass a
+          ``Dataset`` that can deal with the data.
+        training : bool (default=False)
+          Whether train mode should be used or not.
+        """
+        time, event = inverse_transform_survival_target(y_true)
+        time = to_tensor(time, device=self.device)
+        event = to_tensor(time, device=self.device)
+        y_true = torch.stack([time, event], axis=1)
+        return self.criterion_(
+            y_pred, y_true, self.module_.alpha, self.module_.beta
+        )
+
+    def fit(self, X, y=None, **fit_params):
+        if not self.warm_start or not self.initialized_:
+            self.initialize()
+
+        time, event = inverse_transform_survival_target(y)
+        self.train_time = time
+        self.train_event = event
+        self.partial_fit(X, y, **fit_params)
+        self.fit_breslow(
+            self.module_.forward(torch.tensor(X))[0].detach().numpy().ravel(),
+            time,
+            event,
+        )
+        return self
 
 
 class CheerlaEtAlNet(CoxPHNet):
@@ -152,14 +232,20 @@ class CheerlaEtAlNet(CoxPHNet):
         self.train_event = event
         self.partial_fit(X, y, **fit_params)
         self.fit_breslow(
-            self.module_.forward(torch.tensor(X))[0].detach().cpu().numpy().ravel(),
+            self.module_.forward(torch.tensor(X))[0]
+            .detach()
+            .cpu()
+            .numpy()
+            .ravel(),
             time,
             event,
         )
         return self
 
     def forward(self, X, training=False, device="cpu"):
-        y_infer = list(self.forward_iter(X, training=training, device=device))[0][0]
+        y_infer = list(self.forward_iter(X, training=training, device=device))[
+            0
+        ][0]
         return y_infer
 
 
@@ -179,8 +265,6 @@ class GDPNet(CoxPHNet):
                 )
             )
 
-
-
         lasso = torch.sum(
             torch.stack(
                 [
@@ -196,7 +280,6 @@ class GDPNet(CoxPHNet):
         )
 
 
-
 # Adapted from: https://github.com/gevaertlab/MultimodalPrognosis/blob/master/modules.py
 class Highway(nn.Module):
     def __init__(self, size, num_layers, f):
@@ -204,9 +287,15 @@ class Highway(nn.Module):
         super(Highway, self).__init__()
 
         self.num_layers = num_layers
-        self.nonlinear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
-        self.linear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
-        self.gate = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
+        self.nonlinear = nn.ModuleList(
+            [nn.Linear(size, size) for _ in range(num_layers)]
+        )
+        self.linear = nn.ModuleList(
+            [nn.Linear(size, size) for _ in range(num_layers)]
+        )
+        self.gate = nn.ModuleList(
+            [nn.Linear(size, size) for _ in range(num_layers)]
+        )
         self.f = f
 
     def forward(self, x):
@@ -226,7 +315,7 @@ class cheerla_et_al_genomic_encoder(nn.Module):
         encoding_dimension,
         p_dropout=0.0,
         highway_cycles=10,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     ) -> None:
         super().__init__()
         self.encode = nn.Sequential(
@@ -246,7 +335,12 @@ class cheerla_et_al_genomic_encoder(nn.Module):
 
 
 class cheerla_et_al_clinical_encoder(nn.Module):
-    def __init__(self, input_dimension, encoding_dimension=512, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")) -> None:
+    def __init__(
+        self,
+        input_dimension,
+        encoding_dimension=512,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ) -> None:
         super().__init__()
 
         self.device = device
@@ -255,7 +349,6 @@ class cheerla_et_al_clinical_encoder(nn.Module):
         )
         self.input_dimension = input_dimension
         self.encoding_dimension = encoding_dimension
-
 
     def forward(self, X):
         return self.encode(X.to(self.device))
@@ -271,11 +364,18 @@ class cheerla_et_al(nn.Module):
         p_multimodal_dropout=0.25,
     ) -> None:
         super().__init__()
-        block_encoders = [cheerla_et_al_clinical_encoder(len(blocks[0]), encoding_dimension)] + [
-            cheerla_et_al_genomic_encoder(len(i), encoding_dimension, p_dropout) for i in blocks[1:]
+        block_encoders = [
+            cheerla_et_al_clinical_encoder(len(blocks[0]), encoding_dimension)
+        ] + [
+            cheerla_et_al_genomic_encoder(
+                len(i), encoding_dimension, p_dropout
+            )
+            for i in blocks[1:]
         ]
         self.block_encoders = nn.ModuleList(block_encoders)
-        self.hazard = HazardRegression(encoding_dimension, 1, [128], nn.Sigmoid, p_dropout)
+        self.hazard = HazardRegression(
+            encoding_dimension, 1, [128], nn.Sigmoid, p_dropout
+        )
         self.blocks = blocks
         self.encoding_dimension = encoding_dimension
         self.p_dropout = p_dropout
