@@ -28,13 +28,13 @@ class FCBlock(nn.Module):
 
         self.hidden_size = params.get("fc_units", [128, 64])
         self.layers = params.get("fc_layers", 2)
-        self.scaling_factor = eval(params.get("scaling_factor", 0.5))
+        self.scaling_factor = params.get("scaling_factor", 0.5)
 
         self.activation = params.get("fc_activation", ["relu", "None"])
         self.dropout = params.get("fc_dropout", 0.5)
         self.batchnorm = eval(params.get("fc_batchnorm", "False"))
 
-        if len(self.hidden_size) != self.layers and self.reduction_factor is not None:
+        if len(self.hidden_size) != self.layers and self.scaling_factor is not None:
             hidden_size_generated = []
             # factor = (self.reduction_factor - 1) / self.reduction_factor
             for layer in range(self.layers):
@@ -51,10 +51,10 @@ class FCBlock(nn.Module):
         if len(self.activation) != self.layers:
             if len(self.activation) == 2:
                 first, last = self.activation
-                self.activation = [first] * len(self.layers - 1) + [last]
+                self.activation = [first] * (self.layers - 1) + [last]
 
             elif len(self.activation) == 1:
-                self.activation = self.activation * len(self.layers)
+                self.activation = self.activation * self.layers
 
             else:
                 raise ValueError
@@ -62,7 +62,7 @@ class FCBlock(nn.Module):
         modules = []
         self.hidden_units = [self.input_size] + self.hidden_size
         for layer in range(self.layers):
-            modules.append(nn.Linear(self.hidden_units[layer], self.hidden_units[layer + 1]))
+            modules.append(nn.Linear(int(self.hidden_units[layer]), int(self.hidden_units[layer + 1])))
             if self.activation[layer] != "None":
                 modules.append(ACTIVATION_FN_FACTORY[self.activation[layer]])
             if self.dropout > 0:
