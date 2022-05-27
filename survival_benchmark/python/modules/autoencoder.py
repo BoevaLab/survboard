@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from survival_benchmark.python.utils.hyperparameters import ACTIVATION_FN_FACTORY
 
-from survival_benchmark.python.modules.modules import HazardRegression
+from survival_benchmark.python.modules.intermediate_fusion import MultiModalDropout
 from survival_benchmark.python.utils.utils import cox_criterion
 
 
@@ -40,8 +40,8 @@ class FCBlock(nn.Module):
         self.bias_last = eval(params.get("last_layer_bias","True"))
         bias = [True]*(self.layers-1) + [self.bias_last]
 
-        if len(self.hidden_size) != self.layers and self.reduction_factor is not None:
-            hidden_size_generated = []
+        if len(self.hidden_size) != self.layers and self.scaling_factor is not None:
+            hidden_size_generated = [self.input_size]
             # factor = (self.reduction_factor - 1) / self.reduction_factor
             for layer in range(self.layers):
                 try:
@@ -52,7 +52,7 @@ class FCBlock(nn.Module):
                     else:
                         hidden_size_generated.append(hidden_size_generated[-1] * self.scaling_factor)
 
-            self.hidden_size = hidden_size_generated
+            self.hidden_size = hidden_size_generated[1:]
 
         if len(self.activation) != self.layers:
             if len(self.activation) == 2:
@@ -110,32 +110,15 @@ class Decoder(nn.Module):
         super().__init__()
         self.device = device
         self.dec_params = params
-
-        # update based on enc params in AE class
-        # self.dec_params.update(
-        #     {
-        #         "input_size": self.latent_dim,
-        #         "latent_dim": self.input_size,
-        #         "fc_units": self.hidden_units[-2::-1],
-        #     }
-        # )
         self.decoder = FCBlock(self.dec_params)
 
     def forward(self, x):
         return self.decoder(x)
 
-class DAE(nn.Module):
+class DAE(MultiModalDropout):
     def __init__(self,
-        input_dimensionality,
-        output_dimensionality,
-        noise_factor=0, # TODO: or 0.5??
-        activation=nn.PReLU,
-        n_hidden_layers=2,
-        n_first_hidden_layer=128,
-        n_latent_space=64,
-        p_dropout=0.5,
-        batch_norm=False,
-        decrease_factor_per_layer=2,
+        params,
+        noise_factor=0,
         alpha=0.1
     ) -> None:
         super().__init__()
@@ -143,27 +126,36 @@ class DAE(nn.Module):
         self.alpha = alpha
         self.noise_factor = noise_factor
         
-        self.encoder = Encoder(
-            n_input=input_dimensionality,
-            activation=activation,
-            n_hidden_layers=n_hidden_layers,
-            n_first_hidden_layer=n_first_hidden_layer,
-            n_latent_space=n_latent_space,
-            p_dropout=p_dropout,
-            batch_norm=batch_norm,
-            decrease_factor_per_layer=decrease_factor_per_layer
-        )
+        self.input_size = params.get("input_size")
+        self.latent_dim = params.get("latent_dim")
+        self.hidden_units = params.get("fc_units")
+
+        self.encoder = Encoder(params)
         
-        self.decoder = Decoder(self.encoder)
-        
-        self.hazard = HazardRegression(
-            input_dimension=self.encoder.n_latent_space,
-            n_output=output_dimensionality
+        self.params.update(
+            {
+                "input_size": self.latent_dim,
+                "latent_dim": self.input_size,
+                "fc_units": self.hidden_units[-2::-1],
+            }
         )
+
+        self.decoder = Decoder(params)
+        
+        fc_params = {
+            "input_size": self.latent_dim,
+            "latent_dim": 1,
+            "last_layer_bias": False,
+            "n_layers": 2,
+            "fc_units": [(self.latent_dim/2), 1]
+        }
+
+        self.hazard = FCBlock(fc_params)
         
     def forward(self, x):
-
-        x_noisy = x+(self.noise_factor*torch.normal(mean=0.0, std=1, size=x.shape)) 
+        x = self.impute(x)
+        x_dropout = self.multimodal_dropout(x)
+        x_noisy = x_dropout+(self.noise_factor*torch.normal(mean=0.0, std=1, size=x_dropout.shape)) 
         encoded = self.encoder(x_noisy)
         decoded = self.decoder(encoded)
         log_hazard = self.hazard(encoded)
