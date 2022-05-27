@@ -22,6 +22,7 @@ class FCBlock(nn.Module):
                     for options.
                 fc_batchnorm (bool): Whether to include a batchnorm layer.
                 fc_dropout (float): Probability of dropout applied after eacch layer.
+                last_layer_bias (bool): True if bias should be applied in the last layer, False otherwise. Default True.
 
         """
         super(FCBlock, self).__init__()
@@ -36,6 +37,8 @@ class FCBlock(nn.Module):
         self.activation = params.get("fc_activation", ["relu", "None"])
         self.dropout = params.get("fc_dropout", 0.5)
         self.batchnorm = eval(params.get("fc_batchnorm", "False"))
+        self.bias_last = eval(params.get("last_layer_bias","True"))
+        bias = [True]*(self.layers-1) + [self.bias_last]
 
         if len(self.hidden_size) != self.layers and self.reduction_factor is not None:
             hidden_size_generated = []
@@ -65,7 +68,7 @@ class FCBlock(nn.Module):
         modules = []
         self.hidden_units = [self.input_size] + self.hidden_size
         for layer in range(self.layers):
-            modules.append(nn.Linear(self.hidden_units[layer], self.hidden_units[layer + 1]))
+            modules.append(nn.Linear(self.hidden_units[layer], self.hidden_units[layer + 1],bias=bias[layer]))
             if self.activation[layer] != "None":
                 modules.append(ACTIVATION_FN_FACTORY[self.activation[layer]])
             if self.dropout > 0:
