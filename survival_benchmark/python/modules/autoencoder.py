@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 from survival_benchmark.python.utils.hyperparameters import ACTIVATION_FN_FACTORY
 
+from survival_benchmark.python.modules.modules import HazardRegression
+from survival_benchmark.python.utils.utils import cox_criterion
+
 
 class FCBlock(nn.Module):
     """Generalisable DNN module to allow for flexibility in architecture."""
@@ -117,3 +120,55 @@ class Decoder(nn.Module):
 
     def forward(self, x):
         return self.decoder(x)
+
+class DAE(nn.Module):
+    def __init__(self,
+        input_dimensionality,
+        output_dimensionality,
+        noise_factor=0, # TODO: or 0.5??
+        activation=nn.PReLU,
+        n_hidden_layers=2,
+        n_first_hidden_layer=128,
+        n_latent_space=64,
+        p_dropout=0.5,
+        batch_norm=False,
+        decrease_factor_per_layer=2,
+        alpha=0.1
+    ) -> None:
+        super().__init__()
+
+        self.alpha = alpha
+        self.noise_factor = noise_factor
+        
+        self.encoder = Encoder(
+            n_input=input_dimensionality,
+            activation=activation,
+            n_hidden_layers=n_hidden_layers,
+            n_first_hidden_layer=n_first_hidden_layer,
+            n_latent_space=n_latent_space,
+            p_dropout=p_dropout,
+            batch_norm=batch_norm,
+            decrease_factor_per_layer=decrease_factor_per_layer
+        )
+        
+        self.decoder = Decoder(self.encoder)
+        
+        self.hazard = HazardRegression(
+            input_dimension=self.encoder.n_latent_space,
+            n_output=output_dimensionality
+        )
+        
+    def forward(self, x):
+
+        x_noisy = x+(self.noise_factor*torch.normal(mean=0.0, std=1, size=x.shape)) 
+        encoded = self.encoder(x_noisy)
+        decoded = self.decoder(encoded)
+        log_hazard = self.hazard(encoded)
+        return log_hazard, x, decoded
+    
+class dae_criterion(nn.Module):
+    def forward(self, predicted, target):
+        cox_loss = cox_criterion(predicted[0], target)
+        reconstruction_loss = torch.nn.MSE(predicted[1], predicted[2])
+        return self.alpha * cox_loss + reconstruction_loss 
+
