@@ -1,3 +1,4 @@
+from ntpath import join
 import random
 import os
 
@@ -18,7 +19,12 @@ from sklearn.model_selection import StratifiedKFold
 def create_risk_matrix(observed_survival_time):
     observed_survival_time = observed_survival_time.squeeze()
     return (
-        (torch.outer(observed_survival_time, observed_survival_time) >= torch.square(observed_survival_time)).long().T
+        (
+            torch.outer(observed_survival_time, observed_survival_time)
+            >= torch.square(observed_survival_time)
+        )
+        .long()
+        .T
     )
 
 
@@ -36,7 +42,9 @@ class StratifiedSurvivalKFold(StratifiedKFold):
             # Handle string target by selecting out only the event
             # to stratify on.
             if y.dtype not in [np.dtype("float32"), np.dtype("int")]:
-                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
+                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(
+                    np.float32
+                )
 
         return super()._make_test_folds(X=X, y=y)
 
@@ -46,7 +54,9 @@ class StratifiedSurvivalKFold(StratifiedKFold):
             # to stratify on.
 
             if y.dtype not in [np.dtype("float32"), np.dtype("int")]:
-                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
+                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(
+                    np.float32
+                )
             else:
                 event = y[:, 1]
                 return super()._iter_test_masks(X, y=event)
@@ -71,9 +81,13 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
             # Handle string target by selecting out only the event
             # to stratify on.
             if y.dtype not in [np.dtype("float32"), np.dtype("int")]:
-                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(np.float32)
+                y = np.array([str.rsplit(i, "|")[1] for i in y]).astype(
+                    np.float32
+                )
 
-        bad_y_error = ValueError("Stratified CV requires explicitly passing a suitable y.")
+        bad_y_error = ValueError(
+            "Stratified CV requires explicitly passing a suitable y."
+        )
 
         if (y is None) and self.stratified:
             raise bad_y_error
@@ -87,7 +101,10 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
         if y is not None:
             len_y = get_len(y)
             if len_dataset != len_y:
-                raise ValueError("Cannot perform a CV split if dataset and y " "have different lengths.")
+                raise ValueError(
+                    "Cannot perform a CV split if dataset and y "
+                    "have different lengths."
+                )
 
         args = (np.arange(len_dataset),)
         if self._is_stratified(cv):
@@ -148,14 +165,18 @@ def inverse_transform_survival_function(y):
 def negative_partial_log_likelihood_loss(
     y,
     predicted_log_hazard_ratio,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device: torch.device = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    ),
 ):
     (
         observed_survival_time,
         observed_event_indicator,
     ) = inverse_transform_survival_target(y)
     observed_survival_time = torch.tensor(observed_survival_time).to(device)
-    observed_event_indicator = torch.tensor(observed_event_indicator).to(device)
+    observed_event_indicator = torch.tensor(observed_event_indicator).to(
+        device
+    )
     return negative_partial_log_likelihood(
         predicted_log_hazard_ratio,
         observed_survival_time,
@@ -179,7 +200,8 @@ def negative_partial_log_likelihood(
             predicted_log_hazard_ratio.squeeze()
             - torch.log(
                 torch.sum(
-                    risk_matrix.float() * torch.exp(predicted_log_hazard_ratio.squeeze()),
+                    risk_matrix.float()
+                    * torch.exp(predicted_log_hazard_ratio.squeeze()),
                     axis=1,
                 )
             )
@@ -188,12 +210,20 @@ def negative_partial_log_likelihood(
 
 
 def has_missing_modality(encoded_blocks, patient, matched_patient, modality):
-    return torch.all(encoded_blocks[modality][patient] == encoded_blocks[modality][patient][0]) or torch.all(
-        encoded_blocks[modality][matched_patient] == encoded_blocks[modality][matched_patient][0]
+    return torch.all(
+        encoded_blocks[modality][patient]
+        == encoded_blocks[modality][patient][0]
+    ) or torch.all(
+        encoded_blocks[modality][matched_patient]
+        == encoded_blocks[modality][matched_patient][0]
     )
 
 
-def similarity_loss(encoded_blocks, M, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+def similarity_loss(
+    encoded_blocks,
+    M,
+    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+):
     cos = nn.CosineSimilarity(dim=0, eps=1e-08)
     loss = torch.tensor(0.0, device=device)
     n_patients = encoded_blocks[0].shape[0]
@@ -205,7 +235,9 @@ def similarity_loss(encoded_blocks, M, device=torch.device("cuda" if torch.cuda.
                 patient_similarity = torch.tensor(0.0, device=device)
                 matched_patient_similarity = torch.tensor(0.0, device=device)
                 for modality in range(len(encoded_blocks)):
-                    if has_missing_modality(encoded_blocks, patient, matched_patient, modality):
+                    if has_missing_modality(
+                        encoded_blocks, patient, matched_patient, modality
+                    ):
                         pass
                     else:
                         patient_similarity += cos(
@@ -237,6 +269,7 @@ class cheerla_et_al_criterion(nn.Module):
         similarity_loss_ = similarity_loss(encoded_blocks, M)
         return cox_loss + similarity_loss_
 
+
 def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=1):
     """
     Calculate the average Cox negative partial log-likelihood
@@ -255,23 +288,36 @@ def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=1):
     risk_set_sum = R_matrix.mm(torch.exp(pred))
     diff = pred - torch.log(risk_set_sum)
     sum_diff_in_observed = torch.transpose(diff, 0, 1).mm(survival_event)
-    loss = (- (sum_diff_in_observed)/ n_observed ).reshape((-1, ))
+    loss = (-(sum_diff_in_observed) / n_observed).reshape((-1,))
     return loss
+
 
 class cox_criterion(nn.Module):
     def forward(self, prediction, target):
         time, event = inverse_transform_survival_target(target)
         log_hazard_ratio = prediction
-        cox_loss = negative_partial_log_likelihood(log_hazard_ratio, torch.tensor(time), torch.tensor(event))
+        cox_loss = negative_partial_log_likelihood(
+            log_hazard_ratio, torch.tensor(time), torch.tensor(event)
+        )
         return cox_loss
 
 
 def get_blocks(feature_names):
-    column_types = pd.Series(feature_names).str.rsplit("_").apply(lambda x: x[0]).values
+    column_types = (
+        pd.Series(feature_names).str.rsplit("_").apply(lambda x: x[0]).values
+    )
     return [
-        np.where(modality == pd.Series(feature_names).str.rsplit("_").apply(lambda x: x[0]).values)[0].tolist()
+        np.where(
+            modality
+            == pd.Series(feature_names)
+            .str.rsplit("_")
+            .apply(lambda x: x[0])
+            .values
+        )[0].tolist()
         for modality in [
-            q for q in ["clinical", "gex", "cnv", "rppa", "mirna", "mut", "meth"] if q in np.unique(column_types)
+            q
+            for q in ["clinical", "gex", "cnv", "rppa", "mirna", "mut", "meth"]
+            if q in np.unique(column_types)
         ]
     ]
 
@@ -290,3 +336,53 @@ class FixRandomSeed(Callback):
 
     def initialize(self):
         seed_torch(self.seed)
+
+
+class poe_criterion(torch.nn.Module):
+    def forward(
+        self,
+        predicted,
+        target,
+        alpha,
+        beta,
+        device: torch.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        ),
+    ):
+        std_normal = torch.distributions.normal.Normal(0, 1)
+        time = target[:, 0]
+        event = target[:, 1]
+        cox_joint = negative_partial_log_likelihood(
+            predicted[0], time, event
+        ).to(device)
+        cox_modality = [
+            negative_partial_log_likelihood(log_hazard, time, event).to(device)
+            for log_hazard in predicted[3]
+        ]
+        joint_kl = torch.div(
+            torch.sum(
+                torch.distributions.kl.kl_divergence(predicted[2], std_normal)
+            ),
+            predicted[0].shape[0],
+        ).to(device)
+
+        modality_kl = [
+            torch.div(
+                torch.sum(
+                    torch.distributions.kl.kl_divergence(
+                        posterior, std_normal
+                    ).to(device)
+                ),
+                predicted[0].shape[0],
+            )
+            for posterior in predicted[5]
+        ]
+        return (
+            cox_joint
+            + beta * joint_kl
+            + alpha
+            * (
+                torch.sum(torch.stack(cox_modality))
+                + beta * torch.sum(torch.stack(modality_kl))
+            )
+        )
