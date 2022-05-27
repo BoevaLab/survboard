@@ -4,25 +4,71 @@ import warnings
 import math
 from skorch import NeuralNet
 import torch
-
+import numpy as np
+import pandas as pd
+from skorch.utils import to_numpy
 from survival_benchmark.python.utils.utils import inverse_transform_survival_target
 from survival_benchmark.python.modules.modules import BaseSurvivalNeuralNet
 from .sub_models import FC, ClinicalNet, CnvNet, Fusion
+from .loss import Loss
+from .lr_range_test import LRRangeTest
 
-# TODO: in the modules class, add a predict and predict_survival_function funcs
+# NOTE: if error - index out of range in self pops up during categorical data embedding,
+# it is because the encoded values should go between [0, num_embeddings]. Setting it to
+# 999999 etc wont work.
 
 
 class MultiSurvModel(NeuralNet):
-    # def fit(self, X, y=None, **fit_params):
-    #     time, event = inverse_transform_survival_target(y)
-    #     pass
+    def test_lr_range(
+        self,
+        dataloader,
+        optimizer,
+        criterion,
+        auxiliary_criterion,
+        output_intervals,
+        model,
+        init_value=1e-6,
+        final_value=10.0,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ):
 
-    # def predict(self):
-    #     pass
+        lr_test = LRRangeTest(
+            dataloader=dataloader,
+            optimizer=optimizer,
+            criterion=criterion,
+            auxiliary_criterion=criterion,
+            output_intervals=output_intervals,
+            model=model,
+            device=device,
+        )
+        best_lr = lr_test.run(init_value=1e-6, final_value=10.0, beta=0.98)
+        return best_lr
+
+    def ms_loss(self, y_true, y_pred, breaks):
+        time, event = [], []
+        for t, e in y_true:
+            time.append(t)
+            event.append(e)
+
+        time = torch.tensor(time)
+        event = torch.tensor(event)
+
+        loss = Loss()(
+            risk=y_pred,
+            times=time,
+            events=event,
+            breaks=breaks.double().to(self.device),
+            device=self.device,
+        )
+        return loss
 
     def get_loss(self, y_pred, y_true, X=None, training=False):
-        modality_features, risk = y_pred
-        # time, event = inverse_transform_survival_target(y_true)
+
+        if isinstance(y_pred, (tuple, list)):
+            modality_features, risk = y_pred
+        else:
+            risk = y_pred
+
         time, event = y_true
 
         loss = self.criterion_(
@@ -34,8 +80,58 @@ class MultiSurvModel(NeuralNet):
         )
         return loss
 
-    def predict_survival_function(self):
-        pass
+    def _check_dropout(self, dataset):
+        dropout = dataset.dropout
+        if dropout > 0:
+            warnings.warn(f"Data dropout set to {dropout} in input dataset")
+
+    def _convert_to_survival(self, conditional_probabilities):
+        return np.cumprod(conditional_probabilities, 1)
+
+    def predict_survival_function(self, data, prediction_year=None, intervals=None):
+        """Predict patient survival probability at provided time point.
+        intervals - Ex torch.arange(0.5,30,1)
+        prediction_year - Ex 0.65 or smth
+        if both are None, return surv probability for all intervals
+        """
+        if prediction_year is not None:
+            assert intervals is not None, (
+                '"intervals" is required to' + ' compute prediction at a specific "prediction_year".'
+            )
+
+        # data = self._clone(patient_data)
+
+        # data = self._data_to_device(data)
+        risk = self.predict(data)
+        # check this again should be risk i guess
+        survival_prob = self._convert_to_survival(risk.detach().cpu())
+
+        if prediction_year is not None:
+            survival_prob = np.interp(
+                prediction_year * 365,
+                intervals,
+                # Add probability 1.0 at t0 to match number of intervals
+                torch.cat((torch.tensor([1]).float(), survival_prob)),
+            )
+
+        return survival_prob
+
+    def predict(self, data):
+        y = []
+
+        # Convert to survival probabilities
+        for yp in self.forward_iter(data, training=False):
+            # yp = yp[1] if isinstance(yp, tuple) else yp
+            _, risk = yp
+
+            y.append(to_numpy(risk.detach()))
+
+        ypred = torch.from_numpy(np.concatenate(y, 0))
+        # self.module_.eval()
+        # with torch.set_grad_enabled(False):
+        #     _, risk = self.module_(data)
+
+        return ypred
 
 
 class MultiSurv(torch.nn.Module):
@@ -46,7 +142,7 @@ class MultiSurv(torch.nn.Module):
         self.data_modalities = data_modalities.keys()
         self.output_intervals = output_intervals
         n_output_intervals = len(output_intervals) - 1
-        self.mfs = modality_feature_size = 512
+        self.mfs = 512
         valid_mods = ["clinical", "gex", "mirna", "meth", "cnv", "mut", "rppa"]
         assert all(mod in valid_mods for mod in data_modalities), f"Accepted input data modalitites are: {valid_mods}"
 
@@ -118,12 +214,11 @@ class MultiSurv(torch.nn.Module):
 
         # Mutation ---------------------------------------------------------------#
         if "mut" in self.data_modalities:
-            self.mut_submodel = CnvNet(output_vector_size=self.mfs)
+            self.mut_submodel = FC(data_modalities["mut"], self.mfs, 3)
             self.submodels["mut"] = self.mut_submodel
 
             if fusion_method == "cat":
                 self.num_features += self.mfs
-
         # Instantiate multimodal aggregator ----------------------------------#
         if len(data_modalities) > 1:
             self.aggregator = Fusion(fusion_method, self.mfs, device)
@@ -142,14 +237,8 @@ class MultiSurv(torch.nn.Module):
         )
 
     def forward(self, **kwargs):
-
+        # or pass a nested dict (called data) here, and replace **kwargs with 'data'
         multimodal_features = tuple()
-
-        # Run data through modality sub-models (generate feature vectors) ----#
-        # for modality in self.data_modalities:
-        #     if modality == "clinical":
-        #         continue
-        #     multimodal_features += (self.submodels[modality](**kwargs[modality]),)
 
         for modality in self.data_modalities:
             multimodal_features += (self.submodels[modality](kwargs[modality]),)
@@ -173,6 +262,6 @@ class MultiSurv(torch.nn.Module):
             modality_features = torch.stack([batch_element for batch_element in modality if batch_element.sum() != 0])
             output_features += (modality_features,)
 
-        feature_repr["modalities"] = output_features
+        feature_repr["modalities"] = output_features.detach()
 
         return feature_repr, risk
