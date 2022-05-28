@@ -1,20 +1,20 @@
 {
     "random_seed": 42,
-    "initial_lr": 0.01,
+    "initial_lr": 0.1,
     "max_epochs": 100,
     "batch_size": 128,
-    "valid_split_size": 5,
-    "es_patience": 25,
+    "valid_split_size": 10,
+    "es_patience": 11,
     "grid_iter": 5,
     "alpha_range": [
         0.01,
-        10
+        1
     ],
     "beta_range": [
         0.0001,
         0.1
     ],
-    "p_dropout_range": [0.0, 0.5],
+    "p_dropout_range": [0.01, 0.5],
     "p_multimodal_dropout": 0.25,
     "hazard_fc_units": [32, 1],
     "fc_batchnorm": "True",
@@ -23,6 +23,9 @@
     "hazard_fc_layers": 2,
     "fc_units": [128, 64],
     "fc_layers": 2,
-    "latent_dim": 64
+    "latent_dim": 64,
+    "noise_factor": 0.5,
+    "clip": 5,
+    "schedule_patience": 5
 
 }
