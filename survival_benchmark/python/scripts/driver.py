@@ -113,8 +113,8 @@ def main(
         cancers = [0]  # Pancancer doesn't need access to cancer names
     else:
         cancers = config[f"{project.lower()}_cancers"]
-    # for cancer in cancers:
-    for cancer in ["SKCM"]:
+    for cancer in cancers:
+    #for cancer in ["SKCM"]:
         logger.info(f"Starting cancer: {cancer}")
 
         if setting == "standard":
@@ -227,6 +227,10 @@ def main(
                         test_splits[cancer].iloc[outer_split, :].dropna().values,
                         :,
                     ]
+            
+            cat_columns = X_train.columns[X_train.dtypes == "object"]
+            X_train[cat_columns] = X_train[cat_columns].astype(str)
+            X_test[cat_columns] = X_test[cat_columns].astype(str)
 
             ct = ColumnTransformer(
                 [
