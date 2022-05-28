@@ -25,7 +25,7 @@
     "fc_layers": 2,
     "latent_dim": 64,
     "noise_factor": 0.5,
-    "clip": 5,
+    "clip": 3,
     "schedule_patience": 5
 
 }
