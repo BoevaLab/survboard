@@ -68,7 +68,9 @@ class FCBlock(nn.Module):
         modules = []
         self.hidden_units = [self.input_size] + self.hidden_size
         for layer in range(self.layers):
-            modules.append(nn.Linear(int(self.hidden_units[layer]), int(self.hidden_units[layer + 1]), bias=bias[layer]))
+            modules.append(
+                nn.Linear(int(self.hidden_units[layer]), int(self.hidden_units[layer + 1]), bias=bias[layer])
+            )
             if self.activation[layer] != "None":
                 modules.append(ACTIVATION_FN_FACTORY[self.activation[layer]])
             if self.dropout > 0:
@@ -119,8 +121,17 @@ class Decoder(nn.Module):
 
 
 class DAE(MultiModalDropout):
-    def __init__(self, params, blocks, missing_modalities="impute", p_multimodal_dropout=0.0, noise_factor=0, alpha=0.1) -> None:
-        super().__init__(blocks=blocks, p_multimodal_dropout=p_multimodal_dropout)
+    def __init__(
+        self,
+        params,
+        blocks,
+        missing_modalities="impute",
+        p_multimodal_dropout=0.0,
+        noise_factor=0,
+        alpha=0.1,
+        upweight=True,
+    ) -> None:
+        super().__init__(blocks=blocks, p_multimodal_dropout=p_multimodal_dropout, upweight=upweight)
 
         self.alpha = alpha
         self.noise_factor = noise_factor

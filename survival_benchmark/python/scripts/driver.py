@@ -2,10 +2,10 @@ import argparse
 import json
 import logging
 import os
+from pickletools import optimize
 import sys
 
-from sklearn.model_selection import RandomSearchCV
-
+from sklearn.model_selection import RandomizedSearchCV
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -22,6 +22,8 @@ from sklearn.preprocessing import (
     OrdinalEncoder,
     StandardScaler,
 )
+from sklearn.metrics import make_scorer
+from scipy.stats import loguniform
 
 # from sklearn.preprocessing import OneHotEncoder, StandardScaler
 # from sklearn.utils.fixes import loguniform
@@ -31,11 +33,11 @@ from skorch.dataset import ValidSplit
 from survival_benchmark.python.modules.MultiSurv.dataset_benchmark import (
     MultimodalDataset,
 )
-from survival_benchmark.python.modules.MultiSurv.loss import Loss
-from survival_benchmark.python.modules.MultiSurv.multisurv import (
-    MultiSurv,
-    MultiSurvModel,
-)
+
+from survival_benchmark.python.modules.intermediate_fusion import IntermediateFusionMean, IntermediateFusionPoE
+from survival_benchmark.python.modules.autoencoder import DAE
+
+
 from survival_benchmark.python.utils.utils import (
     FixRandomSeed,
     StratifiedSkorchSurvivalSplit,
@@ -44,48 +46,31 @@ from survival_benchmark.python.utils.utils import (
     get_blocks,
     seed_torch,
     transform_survival_target,
+    negative_partial_log_likelihood,
+    negative_partial_log_likelihood_loss,
 )
-
-# from skorch.net import NeuralNet
-# from hyperband import HyperbandSearchCV
-# from scipy.stats import uniform
-
-# from sklearn.metrics import make_scorer
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "data_dir", type=str, help="Path to the folder containing data."
-)
+parser.add_argument("data_dir", type=str, help="Path to the folder containing data.")
 parser.add_argument(
     "config_path",
     type=str,
     help="Path to the parameters needed for training in JSON format.",
 )
-parser.add_argument(
-    "model_params", type=str, help="Path to model parameters json file"
-)
-parser.add_argument(
-    "results_path", type=str, help="Path where results should be saved"
-)
-parser.add_argument(
-    "model_name", type=str, help="Name of model being trained."
-)
-parser.add_argument(
-    "project", type=str, help="Cancer project from which data is being used"
-)
+parser.add_argument("model_params", type=str, help="Path to model parameters json file")
+parser.add_argument("results_path", type=str, help="Path where results should be saved")
+parser.add_argument("model_name", type=str, help="Name of model being trained.")
+parser.add_argument("project", type=str, help="Cancer project from which data is being used")
+parser.add_argument("setting", type=str, help="One of pancancer, standard, missing for the experimental setting.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def main(
-    data_dir, config_path, model_params, results_path, model_name, project
-):
+def main(data_dir, config_path, model_params, results_path, model_name, project, setting):
     # setup logging
     logging.basicConfig(
         handlers=[
-            logging.FileHandler(
-                os.path.join(results_path, f"{model_name}.log")
-            ),
+            logging.FileHandler(os.path.join(results_path, f"{model_name}.log")),
             logging.StreamHandler(sys.stdout),
         ],
     )
@@ -109,35 +94,28 @@ def main(
 
     with open(os.path.join(save_model, "model_params.json"), "w") as f:
         json.dump(params, f)
+
+    grid_iter = params.get("grid_iter", 5)
+    alpha_range = params.get("alpha_range", [0.001, 1])
+    beta_range = params.get("beta_range", [0.001, 1])
+
     logger.info(f"Starting model: {model_name}")
 
     for cancer in config[f"{project.lower()}_cancers"]:
         # for cancer in ["SKCM"]:
         logger.info(f"Starting cancer: {cancer}")
-        input_size = {}
+
         data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed{'' if project.tolower() == 'target' else '_fixed'}.csv"
-        data = pd.read_csv(
-            os.path.join(data_dir, data_path), index_col="patient_id"
-        )
-        if missing:
+        data = pd.read_csv(os.path.join(data_dir, data_path), index_col="patient_id")
+        if setting == "missing":
             data_path = f"processed/{project}/{cancer}_data_incomplete_modalities_preprocessed{'' if project.tolower() == 'target' else '_fixed'}.csv"
-            data_missing = pd.read_csv(
-                os.path.join(data_dir, data_path), index_col="patient_id"
-            )
+            data_missing = pd.read_csv(os.path.join(data_dir, data_path), index_col="patient_id")
         time, event = data["OS_days"], data["OS"]
         data = data.drop(columns=["OS", "OS_days"])
 
         # Train Test Splits
-        train_splits = pd.read_csv(
-            os.path.join(
-                data_dir, f"splits/{project}/{cancer}_train_splits.csv"
-            )
-        )
-        test_splits = pd.read_csv(
-            os.path.join(
-                data_dir, f"splits/{project}/{cancer}_test_splits.csv"
-            )
-        )
+        train_splits = pd.read_csv(os.path.join(data_dir, f"splits/{project}/{cancer}_train_splits.csv"))
+        test_splits = pd.read_csv(os.path.join(data_dir, f"splits/{project}/{cancer}_test_splits.csv"))
 
         for outer_split in range(train_splits.shape[0]):
             logger.info(f"Starting split: {outer_split + 1} / 25")
@@ -147,9 +125,7 @@ def main(
 
             X_train = data.iloc[train_ix, :]
             X_test = data.iloc[test_ix, :]
-            y_train = transform_survival_target(
-                time[train_ix], event[train_ix]
-            )
+            y_train = transform_survival_target(time[train_ix], event[train_ix])
             y_test = transform_survival_target(time[test_ix], event[test_ix])
 
             ct = ColumnTransformer(
@@ -163,9 +139,7 @@ def main(
                     (
                         "categorical",
                         make_pipeline(
-                            OneHotEncoder(
-                                sparse=False, handle_unknown="ignore"
-                            ),
+                            OneHotEncoder(sparse=False, handle_unknown="ignore"),
                             VarianceThreshold(),
                             StandardScaler(),
                         ),
@@ -176,35 +150,30 @@ def main(
             X_train = ct.fit_transform(X_train)
             X_train = pd.DataFrame(
                 X_train,
-                columns=X_train.columns[
-                    np.where(X_train.dtypes != "object")[0]
-                ].tolist()
-                + [
-                    f"clinical_{i}"
-                    for i in ct.transformers_[1][1][0]
-                    .get_feature_names()
-                    .tolist()
-                ],
+                columns=X_train.columns[np.where(X_train.dtypes != "object")[0]].tolist()
+                + [f"clinical_{i}" for i in ct.transformers_[1][1][0].get_feature_names().tolist()],
             )
-            X_test = pd.DataFrame(
-                ct.transform(X_test), columns=X_train.columns
-            )
-            if missing:
+            X_test = pd.DataFrame(ct.transform(X_test), columns=X_train.columns)
+            if setting == "missing":
                 X_train = pd.concat(
                     [
                         X_train,
-                        pd.DataFrame(
-                            ct.transform(data_missing), columns=X_train.columns
-                        ),
+                        pd.DataFrame(ct.transform(data_missing), columns=X_train.columns),
                     ],
                     axis=1,
                 )
 
             net = np.nan
-            grid = RandomSearchCV(
+            # using if-else for net is the best and efficient option
+            param_distributions = {
+                "alpha": loguniform(alpha_range[0], alpha_range[1]),
+                "beta": loguniform(beta_range[0], beta_range[1]),
+                "p_dropout": params.get("p_dropout_space", [0.1, 0.2]),
+            }
+            grid = RandomizedSearchCV(
                 net,
-                param_distribution,  # TODO
-                n_iter=n_iter,  # TODO
+                param_distributions,  # TODO
+                n_iter=grid_iter,  # TODO
                 scoring=make_scorer(negative_partial_log_likelihood_loss),
                 n_jobs=1,
                 refit=True,
@@ -218,14 +187,7 @@ def main(
             survival_functions = net.predict_survival_function(X_test)
             survival_probabilities = np.stack(
                 [
-                    i(
-                        pd.Series(y_train)
-                        .str.rsplit("|")
-                        .apply(lambda x: int(x[0]))
-                        .values
-                    )
-                    .detach()
-                    .numpy()
+                    i(pd.Series(y_train).str.rsplit("|").apply(lambda x: int(x[0])).values).detach().numpy()
                     for i in survival_functions
                 ]
             )
@@ -233,10 +195,7 @@ def main(
 
             sf_df = pd.DataFrame(
                 survival_probabilities,
-                columns=pd.Series(y_train)
-                .str.rsplit("|")
-                .apply(lambda x: int(x[0]))
-                .values,
+                columns=pd.Series(y_train).str.rsplit("|").apply(lambda x: int(x[0])).values,
             )
             sf_df.to_csv(
                 os.path.join(
@@ -266,4 +225,5 @@ if __name__ == "__main__":
         args.results_path,
         args.model_name,
         args.project,
+        args.setting,
     )
