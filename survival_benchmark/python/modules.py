@@ -35,6 +35,7 @@ class DAE(MultiModalDropout):
         self.input_size = sum([len(i) for i in blocks])
         self.latent_dim = params.get("latent_dim")
         self.hidden_units = params.get("fc_units")
+        params.update({"input_size": self.input_size})
         self.params = params
         self.params["fc_dropout"] = p_dropout
         self.encoder = Encoder(params)
@@ -187,57 +188,91 @@ class IntermediateFusionPoE(MultiModalDropout):
     ) -> None:
         super().__init__(
             blocks=blocks,
-            p_multimodal_dropout=params.get("p_multimodal_dropout", 0.0),
-            upweight=params.get("upweight", True),
+            p_multimodal_dropout=p_multimodal_dropout,
+            upweight=upweight,
         )
-        local_params = params.copy(deep=True)
-        local_params["fc_dropout"] = p_dropout
-        local_params.update(
-            {
-                "fc_units": [
-                    i * (1 + int(i == local_params.get("fc_units")[-1]))
-                    for i in local_params.get("fc_units")
-                ]
-            }
-        )
+        # beta = 1
+        # alpha = 0
+        # print(beta)
+        # print(alpha)
+        # local_params = params.copy()
+        # local_params["fc_dropout"] = p_dropout
+        # local_params.update(
+        #     {
+        #         "fc_units": [
+        #             i * (1 + int(i == local_params.get("fc_units")[-1]))
+        #             for i in local_params.get("fc_units")
+        #         ]
+        #     }
+        # )
+        # self.block_encoder = [1] * len(blocks)
+        # for i in range(len(blocks)):
+        #     local_params.update({"input_size": len(blocks[i])})
+        #     self.block_encoder[i] = Encoder(local_params)
+        # self.block_encoder = torch.nn.ModuleList(self.block_encoder)
+        # self.unimodal_log_hazard = torch.nn.ModuleList(
+        #     [
+        #         FCBlock(
+        #             params={
+        #                 "input_size": params.get("latent_dim", 64),
+        #                 "fc_layers": local_params.get("hazard_fc_layers", 2),
+        #                 "fc_units": local_params.get(
+        #                     "hazard_fc_units", [32, 1]
+        #                 ),
+        #                 "fc_last_layer_bias": local_params.get(
+        #                     "hazard_fc_last_layer_bias", False
+        #                 ),
+        #                 "fc_activation": local_params.get(
+        #                     "fc_activation", ["relu", "None"]
+        #                 ),
+        #                 "fc_batchnorm": local_params.get(
+        #                     "fc_batchnorm", "True"
+        #                 ),
+        #                 "fc_dropout": local_params.get("fc_dropout", 0.5),
+        #                 "last_layer_bias": local_params.get(
+        #                     "hazard_fc_last_layer_bias", "False"
+        #                 ),
+        #             }
+        #         )
+        #     ]
+        #     * len(blocks)
+        # )
         self.block_encoder = torch.nn.ModuleList(
             [
-                # FCBlock(
-                #     params={
-                #         "input_size": len(blocks[i]),
-                #         "fc_layers": params.get("encoder_fc_layers", 2),
-                #         "fc_units": params.get("encoder_fc_units", [128, 128]),
-                #         "fc_activation": params.get(
-                #             "fc_activation", ["relu", "None"]
-                #         ),
-                #         "fc_batchnorm": params.get("fc_batchnorm", "True"),
-                #         "fc_dropout": params.get("fc_dropout", 0.5),
-                #     }
-                # )
-                # for i in range(len(blocks))
-                Encoder(params)
+                FCBlock(
+                    params={
+                        "input_size": len(blocks[i]),
+                        "fc_layers": params.get("encoder_fc_layers", 2),
+                        "fc_units": params.get("encoder_fc_units", [128, 128]),
+                        "fc_activation": params.get(
+                            "fc_activation", ["relu", "None"]
+                        ),
+                        "fc_batchnorm": params.get("fc_batchnorm", "True"),
+                        "fc_dropout": params.get("fc_dropout", 0.5),
+                    }
+                )
+                for i in range(len(blocks))
             ]
         )
         self.unimodal_log_hazard = torch.nn.ModuleList(
             [
                 FCBlock(
                     params={
-                        "input_size": local_params.get("fc_units", 64),
-                        "fc_layers": local_params.get("hazard_fc_layers", 2),
-                        "fc_units": local_params.get(
-                            "hazard_fc_units", [32, 1]
-                        ),
-                        "fc_last_layer_bias": local_params.get(
+                        "input_size": params.get(
+                            "encoder_fc_units", [128, 128]
+                        )[-1]
+                        / 2,
+                        "fc_layers": params.get("hazard_fc_layers", 2),
+                        "fc_units": params.get("hazard_fc_units", [32, 1]),
+                        "fc_last_layer_bias": params.get(
                             "hazard_fc_last_layer_bias", False
                         ),
-                        "fc_activation": local_params.get(
+                        "fc_activation": params.get(
                             "fc_activation", ["relu", "None"]
                         ),
-                        "fc_batchnorm": local_params.get(
-                            "fc_batchnorm", "True"
-                        ),
-                        "fc_dropout": local_params.get("fc_dropout", 0.5),
-                        "last_layer_bias": local_params.get(
+                        "fc_batchnorm": params.get("fc_batchnorm", "True"),
+                        "fc_dropout": params.get("fc_dropout", 0.5),
+                        "last_layer_bias": params.get(
                             "hazard_fc_last_layer_bias", "False"
                         ),
                     }
@@ -247,21 +282,35 @@ class IntermediateFusionPoE(MultiModalDropout):
         )
         self.joint_log_hazard = FCBlock(
             params={
-                "input_size": local_params.get("fc_units", 64),
-                "fc_layers": local_params.get("hazard_fc_layers", 2),
-                "fc_units": local_params.get("hazard_fc_units", [32, 1]),
-                "last_layer_bias": local_params.get(
+                "input_size": params.get("encoder_fc_units", [128, 128])[-1]
+                / 2,
+                "fc_layers": params.get("hazard_fc_layers", 2),
+                "fc_units": params.get("hazard_fc_units", [32, 1]),
+                "last_layer_bias": params.get(
                     "hazard_fc_last_layer_bias", "False"
                 ),
-                "fc_activation": local_params.get(
-                    "fc_activation", ["relu", "None"]
-                ),
-                "fc_batchnorm": local_params.get("fc_batchnorm", "True"),
-                "fc_dropout": local_params.get("fc_dropout", 0.5),
+                "fc_activation": params.get("fc_activation", ["relu", "None"]),
+                "fc_batchnorm": params.get("fc_batchnorm", "True"),
+                "fc_dropout": params.get("fc_dropout", 0.5),
             }
         )
+        # self.joint_log_hazard = FCBlock(
+        #     params={
+        #         "input_size": params.get("latent_dim", 64),
+        #         "fc_layers": local_params.get("hazard_fc_layers", 2),
+        #         "fc_units": local_params.get("hazard_fc_units", [32, 1]),
+        #         "last_layer_bias": local_params.get(
+        #             "hazard_fc_last_layer_bias", "False"
+        #         ),
+        #         "fc_activation": local_params.get(
+        #             "fc_activation", ["relu", "None"]
+        #         ),
+        #         "fc_batchnorm": local_params.get("fc_batchnorm", "True"),
+        #         "fc_dropout": local_params.get("fc_dropout", 0.5),
+        #     }
+        # )
         self.blocks = blocks
-        self.params = local_params
+        self.params = params
         self.beta = beta
         self.missing_modalities = missing_modalities
         self.p_multimodal_dropout = p_multimodal_dropout
@@ -274,8 +323,8 @@ class IntermediateFusionPoE(MultiModalDropout):
         for modality in range(len(mu)):
             variance += torch.stack(
                 [mask[:, modality]] * log_var[modality].shape[1], axis=1
-            ) * torch.div(1.0, torch.exp(log_var[modality]))
-        variance = torch.div(1.0, variance)
+            ) * torch.div(1.0, torch.exp(log_var[modality]) + 1e-7)
+        variance = torch.div(1.0, variance + 1e-7)
         log_variance = torch.log(variance)
 
         mu_poe = torch.zeros(variance.shape)
@@ -284,7 +333,7 @@ class IntermediateFusionPoE(MultiModalDropout):
                 torch.stack(
                     [mask[:, modality]] * log_var[modality].shape[1], axis=1
                 )
-                * torch.div(1, torch.exp(log_var[modality]))
+                * torch.div(1, torch.exp(log_var[modality]) + 1e-7)
                 * mu[modality]
             )
         mu_poe = variance * mu_poe
@@ -300,6 +349,7 @@ class IntermediateFusionPoE(MultiModalDropout):
 
     def forward(self, x):
         mask = torch.ones((x.shape[0], len(self.blocks)))
+
         if self.missing_modalities == "multimodal_dropout":
             x = self.zero_impute(x)
             x = self.multimodal_dropout(x)
@@ -308,27 +358,41 @@ class IntermediateFusionPoE(MultiModalDropout):
         elif self.missing_modalities == "poe":
             mask = self.find_missing_modality_mask(x, self.blocks)
             x = self.zero_impute(x)
-
         mu = []
         log_var = []
         for i in range(len(self.blocks)):
             tmp = self.block_encoder[i](x[:, self.blocks[i]])
+            # mu.append(
+            #     tmp[
+            #         :,
+            #         : int(self.params.get("latent_dim", 64))
+            #     ]
+            # )
+            # log_var.append(
+            #     tmp[
+            #         :,
+            #         int(self.params.get("latent_dim", 64)):
+            #     ]
+            # )
             mu.append(
                 tmp[
                     :,
-                    : int(self.params.get("fc_units", [128, 64])[-1]),
+                    : int(
+                        self.params.get("encoder_fc_units", [128, 128])[-1] / 2
+                    ),
                 ]
             )
             log_var.append(
                 tmp[
                     :,
-                    int(self.params.get("fc_units", [128, 64])[-1]) :,
+                    int(
+                        self.params.get("encoder_fc_units", [128, 128])[-1] / 2
+                    ) :,
                 ]
             )
-
         joint_mu, joint_log_var = self.product_of_experts(mask, mu, log_var)
         joint_posterior_distribution = torch.distributions.normal.Normal(
-            joint_mu, torch.sqrt(torch.exp(joint_log_var))
+            joint_mu, torch.sqrt(torch.exp(joint_log_var)) + 1e-7
         )
         joint_posterior = joint_posterior_distribution.rsample()
         joint_log_hazard = self.joint_log_hazard(joint_posterior)
@@ -339,7 +403,7 @@ class IntermediateFusionPoE(MultiModalDropout):
             unimodal_posterior_distributions[
                 ix
             ] = torch.distributions.normal.Normal(
-                mu[ix], torch.sqrt(torch.exp(log_var[ix]))
+                mu[ix], torch.sqrt(torch.exp(log_var[ix])) + 1e-7
             )
             unimodal_posteriors[ix] = unimodal_posterior_distributions[
                 ix

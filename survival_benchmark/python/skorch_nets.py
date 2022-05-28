@@ -179,7 +179,7 @@ class DAENet(CoxPHNet):
         return y_infer
 
 
-class IntermediateFusionPoeNet(CoxPHNet):
+class IntermediateFusionPoENet(CoxPHNet):
     def get_loss(self, y_pred, y_true, X=None, training=False):
         """Return the loss for this batch.
         Parameters

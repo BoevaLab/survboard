@@ -221,8 +221,8 @@ def negative_partial_log_likelihood_loss(
     ) = inverse_transform_survival_target(y_true)
     return negative_partial_log_likelihood(
         y_pred,
-        observed_survival_time,
-        observed_event_indicator,
+        torch.tensor(observed_survival_time),
+        torch.tensor(observed_event_indicator),
     )
 
 

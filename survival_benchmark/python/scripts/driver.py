@@ -7,14 +7,13 @@ import sys
 import numpy as np
 import pandas as pd
 import torch
-from scipy.stats import loguniform
 from sklearn.compose import ColumnTransformer
-from sklearn.feature_selection import VarianceThreshold
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from skorch.callbacks import EarlyStopping, LRScheduler
+from sklearn.utils.fixes import loguniform
+from skorch.callbacks import EarlyStopping, GradientNormClipping, LRScheduler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from survival_benchmark.python.criterion import (
@@ -25,12 +24,12 @@ from survival_benchmark.python.criterion import (
 from survival_benchmark.python.modules import (
     DAE,
     IntermediateFusionMean,
-    IntermediateFusionPoe,
+    IntermediateFusionPoE,
 )
 from survival_benchmark.python.skorch_nets import (
     DAENet,
     IntermediateFusionMeanNet,
-    IntermediateFusionPoeNet,
+    IntermediateFusionPoENet,
 )
 from survival_benchmark.python.utils.utils import (
     StratifiedSkorchSurvivalSplit,
@@ -60,17 +59,17 @@ parser.add_argument(
     "model_name", type=str, help="Name of model being trained."
 )
 parser.add_argument(
-    "missing_modalities",
-    type=str,
-    help="How to handle missing modalities. Must be in ['impute', 'multimodal_dropout'] for DAE and IntermediateMeanFusion and in ['impute', 'multimodal_dropout', 'poe'] for IntermediateFusionPoE.",
-)
-parser.add_argument(
     "project", type=str, help="Cancer project from which data is being used"
 )
 parser.add_argument(
     "setting",
     type=str,
     help="One of pancancer, standard, missing for the experimental setting.",
+)
+parser.add_argument(
+    "missing_modalities",
+    type=str,
+    help="How to handle missing modalities. Must be in ['impute', 'multimodal_dropout'] for DAE and IntermediateMeanFusion and in ['impute', 'multimodal_dropout', 'poe'] for IntermediateFusionPoE.",
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -99,11 +98,11 @@ def main(
     logger.setLevel(logging.DEBUG)
 
     save_here = os.path.join(results_path, "results")
-    save_model = os.path.join(results_path, "models")
+    if setting == "missing":
+        save_here = os.path.join(save_here, missing_modalities)
     save_loss = os.path.join(results_path, "losses")
     os.makedirs(save_here, exist_ok=True)
     os.makedirs(save_loss, exist_ok=True)
-    os.makedirs(save_model, exist_ok=True)
 
     with open(config_path, "r") as f:
         config = json.load(f)
@@ -111,7 +110,7 @@ def main(
     with open(model_params, "r") as f:
         params = json.load(f)
 
-    with open(os.path.join(save_model, "model_params.json"), "w") as f:
+    with open(os.path.join(save_loss, "model_params.json"), "w") as f:
         json.dump(params, f)
 
     seed_torch(params.get("random_seed"))
@@ -126,42 +125,67 @@ def main(
         cancers = [0]  # Pancancer doesn't need access to cancer names
     else:
         cancers = config[f"{project.lower()}_cancers"]
-    for cancer in cancers:
-        # for cancer in ["SKCM"]:
+    # for cancer in cancers:
+    for cancer in ["SKCM"]:
         logger.info(f"Starting cancer: {cancer}")
 
         if setting == "standard":
-            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed{'' if project.tolower() == 'target' else '_fixed'}.csv"
+            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed{'' if project.lower() == 'target' else '_fixed'}.csv"
             data = pd.read_csv(
-                os.path.join(data_dir, data_path), index_col="patient_id"
+                os.path.join(data_dir, data_path),
+                index_col="patient_id",
+                low_memory=False,
             )
+            time, event = data["OS_days"], data["OS"]
         elif setting == "missing":
-            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed{'' if project.tolower() == 'target' else '_fixed'}.csv"
+            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed{'' if project.lower() == 'target' else '_fixed'}.csv"
             data = pd.read_csv(
-                os.path.join(data_dir, data_path), index_col="patient_id"
+                os.path.join(data_dir, data_path),
+                index_col="patient_id",
+                low_memory=False,
             )
-            data_path_missing = f"processed/{project}/{cancer}_data_incomplete_modalities_preprocessed{'' if project.tolower() == 'target' else '_fixed'}.csv"
+            data_path_missing = f"processed/{project}/{cancer}_data_incomplete_modalities_preprocessed{'' if project.lower() == 'target' else '_fixed'}.csv"
             data_missing = pd.read_csv(
                 os.path.join(data_dir, data_path_missing),
                 index_col="patient_id",
+                low_memory=False,
             )
+            time, event = data["OS_days"], data["OS"]
+            time_missing, event_missing = (
+                data_missing["OS_days"],
+                data_missing["OS"],
+            )
+            data_missing = data_missing.drop(columns=["OS", "OS_days"])
+
         elif setting == "pancancer":
-            data_path = f"processed/pancancer/pancancer_complete.csv"
+            data_path = "processed/pancancer_complete.csv"
             data = pd.read_csv(
-                os.path.join(data_dir, data_path), index_col="patient_id"
+                os.path.join(data_dir, data_path),
+                index_col="patient_id",
+                low_memory=False,
             )
-            data_path_missing = f"processed/pancancer/pancancer_incomplete.csv"
+            data_path_missing = "processed/pancancer_incomplete.csv"
             data_missing = pd.read_csv(
                 os.path.join(data_dir, data_path_missing),
                 index_col="patient_id",
+                low_memory=False,
             )
+            time, event = data["OS_days"], data["OS"]
+            time_missing, event_missing = (
+                data_missing["OS_days"],
+                data_missing["OS"],
+            )
+            data_missing = data_missing.drop(columns=["OS", "OS_days"])
         else:
             raise ValueError(
                 "`setting` must be in ['standard', 'missing', 'pancancer']"
             )
 
-        time, event = data["OS_days"], data["OS"]
         data = data.drop(columns=["OS", "OS_days"])
+        msk = (data != data.iloc[0]).any()
+        data = data.loc[:, msk]
+        if setting != "standard":
+            data_missing = data_missing.loc[:, msk]
         if setting != "pancancer":
             # Train Test Splits
             train_splits = pd.read_csv(
@@ -178,6 +202,7 @@ def main(
             train_splits = {}
             test_splits = {}
             for cancer in config["tcga_cancers"]:
+                print(cancer)
                 train_splits[cancer] = pd.read_csv(
                     os.path.join(
                         data_dir, f"splits/{project}/{cancer}_train_splits.csv"
@@ -189,12 +214,20 @@ def main(
                     )
                 )
 
-        for outer_split in range(train_splits.shape[0]):
+        for outer_split in range(train_splits["BLCA"].shape[0]):
             logger.info(f"Starting split: {outer_split + 1} / 25")
 
             if setting != "pancancer":
-                train_ix = train_splits.iloc[outer_split, :].dropna().values
-                test_ix = test_splits.iloc[outer_split, :].dropna().values
+                train_ix = (
+                    train_splits.iloc[outer_split, :]
+                    .dropna()
+                    .values.astype(int)
+                )
+                test_ix = (
+                    test_splits.iloc[outer_split, :]
+                    .dropna()
+                    .values.astype(int)
+                )
             else:
                 train_ix = []
                 test_ix = []
@@ -208,7 +241,7 @@ def main(
                             .values,
                             :,
                         ]
-                        .index.values
+                        .index.values.astype(int)
                     )
                     test_ix.append(
                         data.loc[data["clinical_cancer_type"] == cancer, :]
@@ -219,7 +252,7 @@ def main(
                             .values,
                             :,
                         ]
-                        .index.values
+                        .index.values.astype(int)
                     )
 
             if setting != "pancancer":
@@ -243,26 +276,12 @@ def main(
                         .values,
                         :,
                     ]
-            y_train = transform_survival_target(
-                time[train_ix], event[train_ix]
-            )
-            if setting != "standard":
-                X_train = pd.concat(
-                    [
-                        X_train,
-                        data_missing.drop(
-                            columns=["patient_id", "OS", "OS_days"]
-                        ),
-                    ],
-                    axis=1,
-                )
 
             ct = ColumnTransformer(
                 [
                     (
                         "numerical",
-                        VarianceThreshold(),
-                        StandardScaler(),
+                        make_pipeline(StandardScaler()),
                         np.where(X_train.dtypes != "object")[0],
                     ),
                     (
@@ -271,18 +290,32 @@ def main(
                             OneHotEncoder(
                                 sparse=False, handle_unknown="ignore"
                             ),
-                            VarianceThreshold(),
                             StandardScaler(),
                         ),
                         np.where(X_train.dtypes == "object")[0],
                     ),
                 ]
             )
+            if setting != "standard":
+                X_train = pd.concat(
+                    [X_train, data_missing],
+                    axis=0,
+                )
+                y_train = transform_survival_target(
+                    pd.concat([time[train_ix], time_missing], axis=0),
+                    pd.concat([event[train_ix], event_missing], axis=0),
+                )
+            else:
+                y_train = transform_survival_target(
+                    time[train_ix], event[train_ix]
+                )
+
             X_train = ct.fit_transform(X_train)
+
             X_train = pd.DataFrame(
                 X_train,
-                columns=X_train.columns[
-                    np.where(X_train.dtypes != "object")[0]
+                columns=data.columns[
+                    np.where(data.dtypes != "object")[0]
                 ].tolist()
                 + [
                     f"clinical_{i}"
@@ -301,7 +334,10 @@ def main(
                         ct.transform(X_test[cancer]), columns=X_train.columns
                     )
             base_net_params = {
-                "optimizer": torch.optim.Adam,
+                "module__params": params,
+                "optimizer": torch.optim.SGD,
+                "optimizer__momentum": 0.9,
+                "optimizer__nesterov": True,
                 "max_epochs": params.get("max_epochs"),
                 "lr": params.get("initial_lr"),
                 "train_split": StratifiedSkorchSurvivalSplit(
@@ -309,15 +345,18 @@ def main(
                 ),
                 "batch_size": params.get("batch_size"),
                 "module__blocks": get_blocks(X_train.columns),
-                "module__p_modality_dropout": params.get("p_modality_dropout"),
-                "module__missing_modalities": missing_modalities,
                 "module__p_multimodal_dropout": params.get(
                     "p_multimodal_dropout"
                 ),
+                "module__missing_modalities": missing_modalities,
                 "callbacks": [
                     (
                         "sched",
-                        LRScheduler(ReduceLROnPlateau, monitor="valid_loss"),
+                        LRScheduler(
+                            ReduceLROnPlateau,
+                            monitor="valid_loss",
+                            patience=params.get("schedule_patience"),
+                        ),
                     ),
                     (
                         "es",
@@ -327,11 +366,17 @@ def main(
                             load_best=True,
                         ),
                     ),
+                    (
+                        "clip",
+                        GradientNormClipping(
+                            gradient_clip_value=params.get("clip", 1)
+                        ),
+                    ),
                 ],
             }
             if model_name == "poe":
-                net = IntermediateFusionPoeNet(
-                    module=IntermediateFusionPoe,
+                net = IntermediateFusionPoENet(
+                    module=IntermediateFusionPoE,
                     criterion=intermediate_fusion_poe_criterion,
                 )
             elif model_name == "mean":
@@ -355,11 +400,14 @@ def main(
             # using if-else for net is the best and efficient option
             param_distributions = {
                 "module__alpha": loguniform(alpha_range[0], alpha_range[1]),
-                "module__beta": loguniform(beta_range[0], beta_range[1]),
                 "module__p_dropout": loguniform(
                     p_dropout_range[0], p_dropout_range[1]
                 ),
             }
+            if model_name == "poe":
+                param_distributions.update(
+                    {"module__beta": loguniform(beta_range[0], beta_range[1])}
+                )
             grid = RandomizedSearchCV(
                 net,
                 param_distributions,
@@ -368,17 +416,21 @@ def main(
                     negative_partial_log_likelihood_loss,
                     greater_is_better=False,
                 ),
-                n_jobs=1,
+                n_jobs=-1,
                 refit=True,
                 random_state=params.get("random_seed"),
-                error_score=np.nan,
+                error_score="raise",
                 cv=StratifiedSurvivalKFold(n_splits=5),
             )
-            grid.fit(X_train, y_train)
+            grid.fit(
+                X_train.to_numpy().astype(np.float32), y_train.astype(str)
+            )
             logger.info("Network Fitting Done")
             if setting != "pancancer":
-                survival_functions = grid[-1].predict_survival_function(
-                    grid[:-1].transform(X_test)
+                survival_functions = (
+                    grid.best_estimator_.predict_survival_function(
+                        X_test.to_numpy().astype(np.float32)
+                    )
                 )
                 survival_probabilities = np.stack(
                     [
@@ -407,13 +459,16 @@ def main(
                     os.path.join(
                         save_here,
                         f"{project}_{cancer}_{model_name}_{outer_split}.csv",
-                    )
+                    ),
+                    index=False,
                 )
                 logger.info("Saving models and loss")
             else:
                 for ix, cancer in enumerate(config["tcga_cancers"]):
-                    survival_functions = grid[-1].predict_survival_function(
-                        grid[:-1].transform(X_test[cancer])
+                    survival_functions = (
+                        grid.best_estimator_.predict_survival_function(
+                            X_test[cancer].to_numpy().astype(np.float32)
+                        )
                     )
                     survival_probabilities = np.stack(
                         [
@@ -432,7 +487,8 @@ def main(
                         os.path.join(
                             save_here,
                             f"{project}_{cancer}_{model_name}_{outer_split}_pancancer.csv",
-                        )
+                        ),
+                        index=False,
                     )
                     logger.info("Saving models and loss")
             with open(
@@ -442,7 +498,7 @@ def main(
                 ),
                 "w",
             ) as f:
-                json.dump(net.history, f)
+                json.dump(grid.best_estimator_.history, f)
 
     logger.info("Experiment Complete")
 

@@ -4,7 +4,7 @@ from survival_benchmark.python.utils.utils import (
 )
 
 
-class poe_criterion(torch.nn.Module):
+class intermediate_fusion_poe_criterion(torch.nn.Module):
     def forward(
         self,
         predicted,
@@ -54,7 +54,7 @@ class poe_criterion(torch.nn.Module):
         )
 
 
-class intermean_criterion(torch.nn.Module):
+class intermediate_fusion_mean_criterion(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
