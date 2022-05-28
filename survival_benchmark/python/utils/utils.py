@@ -30,8 +30,12 @@ from sklearn.model_selection import StratifiedKFold
 def multimodal_dropout(x, p_multimodal_dropout, blocks, upweight=True):
     for block in blocks:
         if not torch.all(x[:, block] == 0):
-            msk = torch.where((torch.rand(x.shape[0]) <= p_multimodal_dropout).long())[0]
-            x[:, torch.tensor(block)][msk, :] = torch.zeros(x[:, torch.tensor(block)][msk, :].shape)
+            msk = torch.where(
+                (torch.rand(x.shape[0]) <= p_multimodal_dropout).long()
+            )[0]
+            x[:, torch.tensor(block)][msk, :] = torch.zeros(
+                x[:, torch.tensor(block)][msk, :].shape
+            )
 
     if upweight:
         x = x / (1 - p_multimodal_dropout)
@@ -39,7 +43,9 @@ def multimodal_dropout(x, p_multimodal_dropout, blocks, upweight=True):
 
 
 class MultiModalDropout(torch.nn.Module):
-    def __init__(self, blocks, p_multimodal_dropout=0.0, upweight=True) -> None:
+    def __init__(
+        self, blocks, p_multimodal_dropout=0.0, upweight=True
+    ) -> None:
         super().__init__()
         self.blocks = blocks
         self.p_multimodal_dropout = p_multimodal_dropout
@@ -206,18 +212,15 @@ def inverse_transform_survival_function(y):
 
 
 def negative_partial_log_likelihood_loss(
-    y, predicted_log_hazard_ratio, device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    y_true,
+    y_pred,
 ):
     (
         observed_survival_time,
         observed_event_indicator,
-    ) = inverse_transform_survival_target(y)
-    observed_survival_time = torch.tensor(observed_survival_time).to(device)
-    observed_event_indicator = torch.tensor(observed_event_indicator).to(
-        device
-    )
+    ) = inverse_transform_survival_target(y_true)
     return negative_partial_log_likelihood(
-        predicted_log_hazard_ratio,
+        y_pred,
         observed_survival_time,
         observed_event_indicator,
     )
@@ -375,53 +378,3 @@ class FixRandomSeed(Callback):
 
     def initialize(self):
         seed_torch(self.seed)
-
-
-class poe_criterion(torch.nn.Module):
-    def forward(
-        self,
-        predicted,
-        target,
-        alpha,
-        beta,
-        device: torch.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        ),
-    ):
-        std_normal = torch.distributions.normal.Normal(0, 1)
-        time = target[:, 0]
-        event = target[:, 1]
-        cox_joint = negative_partial_log_likelihood(
-            predicted[0], time, event
-        ).to(device)
-        cox_modality = [
-            negative_partial_log_likelihood(log_hazard, time, event).to(device)
-            for log_hazard in predicted[3]
-        ]
-        joint_kl = torch.div(
-            torch.sum(
-                torch.distributions.kl.kl_divergence(predicted[2], std_normal)
-            ),
-            predicted[0].shape[0],
-        ).to(device)
-
-        modality_kl = [
-            torch.div(
-                torch.sum(
-                    torch.distributions.kl.kl_divergence(
-                        posterior, std_normal
-                    ).to(device)
-                ),
-                predicted[0].shape[0],
-            )
-            for posterior in predicted[5]
-        ]
-        return (
-            cox_joint
-            + beta * joint_kl
-            + alpha
-            * (
-                torch.sum(torch.stack(cox_modality))
-                + beta * torch.sum(torch.stack(modality_kl))
-            )
-        )
