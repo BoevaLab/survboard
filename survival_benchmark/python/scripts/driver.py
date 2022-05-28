@@ -114,7 +114,7 @@ def main(
     else:
         cancers = config[f"{project.lower()}_cancers"]
     for cancer in cancers:
-    #for cancer in ["SKCM"]:
+        # for cancer in ["SKCM"]:
         logger.info(f"Starting cancer: {cancer}")
 
         if setting == "standard":
@@ -227,10 +227,11 @@ def main(
                         test_splits[cancer].iloc[outer_split, :].dropna().values,
                         :,
                     ]
-            
+
             cat_columns = X_train.columns[X_train.dtypes == "object"]
-            X_train[cat_columns] = X_train[cat_columns].astype(str)
-            X_test[cat_columns] = X_test[cat_columns].astype(str)
+            for col in cat_columns:
+                X_train[col] = X_train[col].astype(str)
+                X_test[col] = X_test[col].astype(str)
 
             ct = ColumnTransformer(
                 [
@@ -273,6 +274,15 @@ def main(
             else:
                 for cancer in config["tcga_cancers"]:
                     X_test[cancer] = pd.DataFrame(ct.transform(X_test[cancer]), columns=X_train.columns)
+
+            num_batches_train = len(X_train) / params.get("batch_size")
+            droplast_train = (
+                True if (num_batches_train - np.floor(num_batches_train)) * params.get("batch_size") == 1 else False
+            )
+            num_batches_valid = np.floor(len(X_train) / params.get("valid_split_size")) / params.get("batch_size")
+            droplast_valid = (
+                True if (num_batches_valid - np.floor(num_batches_valid)) * params.get("batch_size") == 1 else False
+            )
             base_net_params = {
                 "module__params": params,
                 "optimizer": torch.optim.SGD,
@@ -282,6 +292,8 @@ def main(
                 "lr": params.get("initial_lr"),
                 "train_split": StratifiedSkorchSurvivalSplit(params.get("valid_split_size"), stratified=True),
                 "batch_size": params.get("batch_size"),
+                "iterator_train__drop_last": droplast_train,
+                "iterator_valid__drop_last": droplast_valid,
                 "module__blocks": get_blocks(X_train.columns),
                 "module__p_multimodal_dropout": params.get("p_multimodal_dropout"),
                 "module__missing_modalities": missing_modalities,
