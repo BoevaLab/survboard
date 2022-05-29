@@ -1,7 +1,7 @@
 from ntpath import join
 import torch
 from survival_benchmark.python.utils.utils import (
-    negative_partial_log_likelihood,
+    negative_partial_log_likelihood, neg_par_log_likelihood
 )
 
 
@@ -19,11 +19,15 @@ class intermediate_fusion_poe_criterion(torch.nn.Module):
         std_normal = torch.distributions.normal.Normal(0, 1)
         time = target[:, 0]
         event = target[:, 1]
+        # cox_joint = neg_par_log_likelihood(
+        #     predicted[0], torch.unsqueeze(time, 1).float(), torch.unsqueeze(event, 1).float()
+        # ).to(device)
         cox_joint = negative_partial_log_likelihood(
             predicted[0], time, event
         ).to(device)
         cox_modality = [
-            negative_partial_log_likelihood(log_hazard, time, event).to(device)
+            #neg_par_log_likelihood(log_hazard, torch.unsqueeze(time, 1).float(), torch.unsqueeze(event, 1).float()).to(device)
+            negative_partial_log_likelihood(log_hazard, time, event)
             for log_hazard in predicted[3]
         ]
         joint_kl = torch.div(
@@ -44,6 +48,12 @@ class intermediate_fusion_poe_criterion(torch.nn.Module):
             )
             for posterior in predicted[5]
         ]
+        # print(cox_joint)
+        # print(joint_kl)
+        # #print(torch.sum(torch.stack(cox_modality)))
+        # print(torch.stack(cox_modality))
+        # print(torch.sum(torch.stack(modality_kl)))
+
         return (
             cox_joint
             + beta * joint_kl

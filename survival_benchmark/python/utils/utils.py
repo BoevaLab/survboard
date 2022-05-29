@@ -312,7 +312,7 @@ class cheerla_et_al_criterion(nn.Module):
         return cox_loss + similarity_loss_
 
 
-def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=1):
+def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=0):
     """
     Calculate the average Cox negative partial log-likelihood
     Input:

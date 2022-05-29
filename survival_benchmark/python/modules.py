@@ -62,14 +62,17 @@ class DAE(MultiModalDropout):
         self.hazard = FCBlock(fc_params)
 
     def forward(self, x):
-        x = self.zero_impute(x)
-        x_dropout = x
-        if self.missing_modalities == "multimodal_dropout":
-            x_dropout = self.multimodal_dropout(x)
-        x_noisy = x_dropout + (
-            self.noise_factor
-            * torch.normal(mean=0.0, std=1, size=x_dropout.shape)
-        )
+        if self.training:
+            x = self.zero_impute(x)
+            x_dropout = x
+            if self.missing_modalities == "multimodal_dropout":
+                x_dropout = self.multimodal_dropout(x)
+            x_noisy = x_dropout + (
+                self.noise_factor * torch.rand(size=x_dropout.shape)
+            )
+        else:
+            x = self.zero_impute(x)
+            x_noisy = x
         encoded = self.encoder(x_noisy)
         decoded = self.decoder(encoded)
         log_hazard = self.hazard(encoded)
@@ -146,11 +149,13 @@ class IntermediateFusionMean(MultiModalDropout):
         self.upweight = upweight
 
     def forward(self, x):
-
-        if self.missing_modalities == "multimodal_dropout":
-            x = self.zero_impute(x)
-            x = self.multimodal_dropout(x)
-        elif self.missing_modalities == "impute":
+        if self.training:
+            if self.missing_modalities == "multimodal_dropout":
+                x = self.zero_impute(x)
+                x = self.multimodal_dropout(x)
+            elif self.missing_modalities == "impute":
+                x = self.zero_impute(x)
+        else:
             x = self.zero_impute(x)
 
         stacked_embedding = torch.stack(
@@ -323,8 +328,8 @@ class IntermediateFusionPoE(MultiModalDropout):
         for modality in range(len(mu)):
             variance += torch.stack(
                 [mask[:, modality]] * log_var[modality].shape[1], axis=1
-            ) * torch.div(1.0, torch.exp(log_var[modality]) + 1e-7)
-        variance = torch.div(1.0, variance + 1e-7)
+            ) * torch.div(1.0, torch.exp(log_var[modality]))
+        variance = torch.div(1.0, variance)
         log_variance = torch.log(variance)
 
         mu_poe = torch.zeros(variance.shape)
@@ -333,7 +338,7 @@ class IntermediateFusionPoE(MultiModalDropout):
                 torch.stack(
                     [mask[:, modality]] * log_var[modality].shape[1], axis=1
                 )
-                * torch.div(1, torch.exp(log_var[modality]) + 1e-7)
+                * torch.div(1, torch.exp(log_var[modality]))
                 * mu[modality]
             )
         mu_poe = variance * mu_poe
@@ -349,14 +354,18 @@ class IntermediateFusionPoE(MultiModalDropout):
 
     def forward(self, x):
         mask = torch.ones((x.shape[0], len(self.blocks)))
-
-        if self.missing_modalities == "multimodal_dropout":
-            x = self.zero_impute(x)
-            x = self.multimodal_dropout(x)
-        elif self.missing_modalities == "impute":
-            x = self.zero_impute(x)
-        elif self.missing_modalities == "poe":
-            mask = self.find_missing_modality_mask(x, self.blocks)
+        if self.training:
+            if self.missing_modalities == "multimodal_dropout":
+                x = self.zero_impute(x)
+                x = self.multimodal_dropout(x)
+            elif self.missing_modalities == "impute":
+                x = self.zero_impute(x)
+            elif self.missing_modalities == "poe":
+                mask = self.find_missing_modality_mask(x, self.blocks)
+                x = self.zero_impute(x)
+        else:
+            if self.missing_modalities == "poe":
+                mask = self.find_missing_modality_mask(x, self.blocks)
             x = self.zero_impute(x)
         mu = []
         log_var = []
@@ -392,7 +401,7 @@ class IntermediateFusionPoE(MultiModalDropout):
             )
         joint_mu, joint_log_var = self.product_of_experts(mask, mu, log_var)
         joint_posterior_distribution = torch.distributions.normal.Normal(
-            joint_mu, torch.sqrt(torch.exp(joint_log_var)) + 1e-7
+            joint_mu, torch.sqrt(torch.exp(joint_log_var))
         )
         joint_posterior = joint_posterior_distribution.rsample()
         joint_log_hazard = self.joint_log_hazard(joint_posterior)
@@ -403,7 +412,7 @@ class IntermediateFusionPoE(MultiModalDropout):
             unimodal_posterior_distributions[
                 ix
             ] = torch.distributions.normal.Normal(
-                mu[ix], torch.sqrt(torch.exp(log_var[ix])) + 1e-7
+                mu[ix], torch.sqrt(torch.exp(log_var[ix]))
             )
             unimodal_posteriors[ix] = unimodal_posterior_distributions[
                 ix
