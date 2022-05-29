@@ -202,7 +202,7 @@ def transform_survival_target(time, event):
 
 def inverse_transform_survival_target(y):
     return (
-        np.array([float(i.rsplit("|")[0]) for i in y]),
+        np.array([int(i.rsplit("|")[0]) for i in y]),
         np.array([int(i.rsplit("|")[1]) for i in y]),
     )
 
