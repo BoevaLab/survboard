@@ -117,9 +117,11 @@ class IntermediateFusionMeanNet(CoxPHNet):
         training=False,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     ):
-        y_infer = list(self.forward_iter(X, training=training, device=device))[
-            0
-        ][0]
+        y_infer = list(self.forward_iter(X, training=training, device=device))
+        if len(y_infer) > 1:
+            y_infer = torch.cat([i[0] for i in y_infer], axis=0)
+        else:
+            y_infer = y_infer[0][0]
         return y_infer
 
 
@@ -173,9 +175,11 @@ class DAENet(CoxPHNet):
         training=False,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     ):
-        y_infer = list(self.forward_iter(X, training=training, device=device))[
-            0
-        ][0]
+        y_infer = list(self.forward_iter(X, training=training, device=device))
+        if len(y_infer) > 1:
+            y_infer = torch.cat([i[0] for i in y_infer], axis=0)
+        else:
+            y_infer = y_infer[0][0]
         return y_infer
 
 
@@ -231,7 +235,9 @@ class IntermediateFusionPoENet(CoxPHNet):
         training=False,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     ):
-        y_infer = list(self.forward_iter(X, training=training, device=device))[
-            0
-        ][0]
+        y_infer = list(self.forward_iter(X, training=training, device=device))
+        if len(y_infer) > 1:
+            y_infer = torch.cat([i[0] for i in y_infer], axis=0)
+        else:
+            y_infer = y_infer[0][0]
         return y_infer
