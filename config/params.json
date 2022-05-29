@@ -1,6 +1,6 @@
 {
     "random_seed": 42,
-    "initial_lr": 0.1,
+    "initial_lr": 0.01,
     "max_epochs": 100,
     "batch_size": 128,
     "valid_split_size": 10,
