@@ -139,24 +139,7 @@ def main(
                 os.path.join(data_dir, data_path_missing),
                 low_memory=False,
             ).drop(columns=["patient_id"])
-            # if project == "target":
-            #     data_missing.iloc[
-            #         :,
-            #         [
-            #             i
-            #             for i in range(len(data_missing.columns))
-            #             if "clinical" in data_missing.columns[i]
-            #         ],
-            #     ] = data_missing.iloc[
-            #         :,
-            #         [
-            #             i
-            #             for i in range(len(data_missing.columns))
-            #             if "clinical" in data_missing.columns[i]
-            #         ],
-            #     ].fillna(
-            #         "MISSING"
-            #     )
+
             time, event = data["OS_days"].astype(int), data["OS"].astype(int)
             time_missing, event_missing = (
                 data_missing["OS_days"].astype(int),
@@ -262,25 +245,6 @@ def main(
                 X_train = pd.concat(
                     [X_train, data_missing],
                     axis=0,
-                )
-                print(X_train.shape)
-                print(
-                    pd.concat(
-                        [
-                            time[np.array([item for sublist in train_ix for item in sublist])],
-                            time_missing,
-                        ],
-                        axis=0,
-                    ).shape
-                )
-                print(
-                    pd.concat(
-                        [
-                            event[np.array([item for sublist in train_ix for item in sublist])],
-                            event_missing,
-                        ],
-                        axis=0,
-                    ).shape
                 )
 
                 y_train = transform_survival_target(
@@ -484,7 +448,7 @@ def main(
                     )
                 else:
                     for ix, cancer in enumerate(config["tcga_cancers"]):
-                        survival_probabilities = np.stack([y for i in range(X_test.shape[0])])
+                        survival_probabilities = np.stack([y for i in range(X_test[cancer].shape[0])])
 
                         sf_df = pd.DataFrame(survival_probabilities, columns=x)
 

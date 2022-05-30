@@ -14,14 +14,26 @@
         0.0001,
         0.1
     ],
-    "p_dropout_range": [0.01, 0.5],
+    "p_dropout_range": [
+        0.01,
+        0.5
+    ],
     "p_multimodal_dropout": 0.25,
-    "hazard_fc_units": [32, 1],
+    "hazard_fc_units": [
+        32,
+        1
+    ],
     "fc_batchnorm": "True",
-    "fc_activation": ["relu", "None"],
+    "fc_activation": [
+        "relu",
+        "None"
+    ],
     "hazard_fc_last_layer_bias": "False",
     "hazard_fc_layers": 2,
-    "fc_units": [128, 64],
+    "fc_units": [
+        128,
+        64
+    ],
     "fc_layers": 2,
     "latent_dim": 64,
     "noise_factor": 1,
