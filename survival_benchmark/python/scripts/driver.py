@@ -124,52 +124,28 @@ def main(
     for cancer in cancers:
         logger.info(f"Starting cancer: {cancer}")
         if setting == "standard":
-            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed{'' if project.lower() == 'target' else '_fixed'}.csv"
+            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed_fixed.csv"
             data = pd.read_csv(
                 os.path.join(data_dir, data_path),
                 low_memory=False,
             ).drop(columns=["patient_id"])
-            if project == "target":
-                data = data.fillna("MISSING")
+
             time, event = data["OS_days"].astype(int), data["OS"].astype(int)
         elif setting == "missing":
-            if project != "target":
-                data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed{'' if project.lower() == 'target' else '_fixed'}.csv"
-            else:
-                data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
+
+            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed_fixed.csv"
             data = pd.read_csv(
                 os.path.join(data_dir, data_path),
                 low_memory=False,
             ).drop(columns=["patient_id"])
-            if project == "target":
-                data = data.fillna("MISSING")
 
-            if project != "target":
-                data_path_missing = f"processed/{project}/{cancer}_data_incomplete_modalities_preprocessed{'' if project.lower() == 'target' else '_fixed'}.csv"
-            else:
-                data_path_missing = f"processed/{project}/{cancer}_data_non_complete_modalities_preprocessed.csv"
+            data_path_missing = f"processed/{project}/{cancer}_data_incomplete_modalities_preprocessed_fixed.csv"
+
             data_missing = pd.read_csv(
                 os.path.join(data_dir, data_path_missing),
                 low_memory=False,
             ).drop(columns=["patient_id"])
-            if project == "target":
-                data_missing.iloc[
-                    :,
-                    [
-                        i
-                        for i in range(len(data_missing.columns))
-                        if "clinical" in data_missing.columns[i]
-                    ],
-                ] = data_missing.iloc[
-                    :,
-                    [
-                        i
-                        for i in range(len(data_missing.columns))
-                        if "clinical" in data_missing.columns[i]
-                    ],
-                ].fillna(
-                    "MISSING"
-                )
+
             time, event = data["OS_days"].astype(int), data["OS"].astype(int)
             time_missing, event_missing = (
                 data_missing["OS_days"].astype(int),
@@ -230,6 +206,7 @@ def main(
                         data_dir, f"splits/{project}/{cancer}_test_splits.csv"
                     )
                 )
+
         for outer_split in range(25):
             logger.info(f"Starting split: {outer_split + 1} / 25")
 
@@ -568,7 +545,7 @@ def main(
                 ) as f:
                     json.dump(grid.best_estimator_.history, f)
             except Exception as e:
-                print(e)
+                logger.info(e)
                 logger.info(
                     "Error encountered - replacing failing iteration with Kaplan-Meier estimate."
                 )
@@ -599,7 +576,7 @@ def main(
                 else:
                     for ix, cancer in enumerate(config["tcga_cancers"]):
                         survival_probabilities = np.stack(
-                            [y for i in range(X_test.shape[0])]
+                            [y for i in range(X_test[cancer].shape[0])]
                         )
 
                         sf_df = pd.DataFrame(survival_probabilities, columns=x)
