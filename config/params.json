@@ -26,5 +26,5 @@
     "fc_layers": 2,
     "latent_dim": 64,
     "noise_factor": 1,
-    "schedule_patience": 5
+    "schedule_patience": 3
 }
