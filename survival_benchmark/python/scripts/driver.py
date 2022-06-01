@@ -12,9 +12,12 @@ from sklearn.compose import ColumnTransformer
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import (
+    OneHotEncoder,
+    StandardScaler,
+)
 from sklearn.utils.fixes import loguniform
-from skorch.callbacks import EarlyStopping, LRScheduler
+from skorch.callbacks import EarlyStopping, LRScheduler, GradientNormClipping
 from sksurv.nonparametric import kaplan_meier_estimator
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
@@ -122,6 +125,7 @@ def main(
     else:
         cancers = config[f"{project.lower()}_cancers"]
     for cancer in cancers:
+        # for cancer in ["PACA-CA"]:
         logger.info(f"Starting cancer: {cancer}")
         if setting == "standard":
             data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed_fixed.csv"
@@ -364,7 +368,9 @@ def main(
                         ct.transform(X_test[cancer]), columns=X_train.columns
                     )
 
-            num_batches_train = len(X_train) / params.get("batch_size")
+            num_batches_train = (int(len(X_train) * 0.9)) / params.get(
+                "batch_size"
+            )
             droplast_train = (
                 True
                 if (num_batches_train - np.floor(num_batches_train))
@@ -393,6 +399,7 @@ def main(
                 "batch_size": params.get("batch_size"),
                 "iterator_train__drop_last": droplast_train,
                 "iterator_valid__drop_last": droplast_valid,
+                "iterator_train__shuffle": True,
                 "module__blocks": get_blocks(X_train.columns),
                 "module__p_multimodal_dropout": params.get(
                     "p_multimodal_dropout"
@@ -414,7 +421,7 @@ def main(
                             patience=params.get("es_patience"),
                             load_best=True,
                         ),
-                    ),
+                    )
                 ],
             }
             if model_name == "poe":
@@ -446,6 +453,8 @@ def main(
                     p_dropout_range[0], p_dropout_range[1]
                 ),
             }
+            print(X_train.shape)
+            print(y_train.shape)
             grid = RandomizedSearchCV(
                 net,
                 param_distributions,
@@ -454,7 +463,7 @@ def main(
                     negative_partial_log_likelihood_loss,
                     greater_is_better=False,
                 ),
-                n_jobs=-1,
+                n_jobs=1,
                 refit=True,
                 random_state=params.get("random_seed"),
                 error_score=np.nan,

@@ -262,9 +262,9 @@ class IntermediateFusionPoE(MultiModalDropout):
         for modality in range(len(mu)):
             variance += torch.stack(
                 [mask[:, modality]] * log_var[modality].shape[1], axis=1
-            ) * torch.div(1.0, torch.exp(log_var[modality]))
-        variance = torch.div(1.0, variance)
-        log_variance = torch.log(variance)
+            ) * torch.div(1.0, torch.exp(log_var[modality]) + 1e-8)
+        variance = torch.div(1.0, variance + 1e-8)
+        log_variance = torch.log(variance + 1e-8)
 
         mu_poe = torch.zeros(variance.shape)
         for modality in range(len(mu)):
@@ -272,7 +272,7 @@ class IntermediateFusionPoE(MultiModalDropout):
                 torch.stack(
                     [mask[:, modality]] * log_var[modality].shape[1], axis=1
                 )
-                * torch.div(1, torch.exp(log_var[modality]))
+                * torch.div(1, torch.exp(log_var[modality]) + 1e-8)
                 * mu[modality]
             )
         mu_poe = variance * mu_poe

@@ -4,6 +4,12 @@ import torch
 from survival_benchmark.python.utils.utils import neg_par_log_likelihood
 
 
+def kl(mu, log_var):
+    return torch.mean(
+        -0.5 * torch.sum(1 + log_var - mu**2 - log_var.exp(), dim=1), dim=0
+    )
+
+
 class intermediate_fusion_poe_criterion(torch.nn.Module):
     def forward(
         self,
@@ -30,7 +36,6 @@ class intermediate_fusion_poe_criterion(torch.nn.Module):
                 torch.unsqueeze(time, 1).float(),
                 torch.unsqueeze(event, 1).float(),
             ).to(device)
-            # negative_partial_log_likelihood(log_hazard, time, event)
             for log_hazard in predicted[3]
         ]
         joint_kl = torch.div(
@@ -51,10 +56,6 @@ class intermediate_fusion_poe_criterion(torch.nn.Module):
             )
             for posterior in predicted[5]
         ]
-        # print(cox_joint)
-        # print(joint_kl)
-        # print(torch.sum(torch.stack(cox_modality)))
-        # print(torch.sum(torch.stack(modality_kl)))
         return (
             cox_joint
             + beta * joint_kl

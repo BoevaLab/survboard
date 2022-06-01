@@ -76,11 +76,12 @@ def create_risk_matrix(observed_survival_time):
         .T
     )
 
+
 def get_R_matrix(survival_time):
     """
     Create an indicator matrix of risk sets, where T_j >= T_i.
     Input:
-        survival_time: a Pytorch tensor that the number of rows is equal top the number of samples 
+        survival_time: a Pytorch tensor that the number of rows is equal top the number of samples
     Output:
         indicator matrix: an indicator matrix
     """
@@ -156,9 +157,7 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
         if (y is None) and self.stratified:
             raise bad_y_error
 
-        cv = self.check_cv(y)
-        if self.stratified and not self._is_stratified(cv):
-            raise bad_y_error
+        cv = StratifiedKFold(n_splits=self.cv, random_state=42, shuffle=True)
 
         # pylint: disable=invalid-name
         len_dataset = get_len(dataset)
@@ -175,7 +174,6 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
             args = args + (to_numpy(y),)
 
         idx_train, idx_valid = next(iter(cv.split(*args, groups=groups)))
-
         dataset_train = torch.utils.data.Subset(dataset, idx_train)
         dataset_valid = torch.utils.data.Subset(dataset, idx_valid)
         return dataset_train, dataset_valid
