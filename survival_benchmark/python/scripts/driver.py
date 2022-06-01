@@ -463,7 +463,7 @@ def main(
                     negative_partial_log_likelihood_loss,
                     greater_is_better=False,
                 ),
-                n_jobs=1,
+                n_jobs=-1,
                 refit=True,
                 random_state=params.get("random_seed"),
                 error_score=np.nan,
