@@ -33,7 +33,7 @@ class CoxPHNet(NeuralNet):
         """
         time, event = inverse_transform_survival_target(y_true)
         time = to_tensor(time, device=self.device)
-        event = to_tensor(time, device=self.device)
+        event = to_tensor(event, device=self.device)
         y_true = torch.stack([time, event], axis=1)
         return self.criterion_(y_pred, y_true)
 
@@ -92,7 +92,7 @@ class IntermediateFusionMeanNet(CoxPHNet):
         """
         time, event = inverse_transform_survival_target(y_true)
         time = to_tensor(time, device=self.device)
-        event = to_tensor(time, device=self.device)
+        event = to_tensor(event, device=self.device)
         y_true = torch.stack([time, event], axis=1)
         return self.criterion_(y_pred, y_true, self.module_.alpha)
 
@@ -150,7 +150,7 @@ class DAENet(CoxPHNet):
         """
         time, event = inverse_transform_survival_target(y_true)
         time = to_tensor(time, device=self.device)
-        event = to_tensor(time, device=self.device)
+        event = to_tensor(event, device=self.device)
         y_true = torch.stack([time, event], axis=1)
         return self.criterion_(y_pred, y_true, self.module_.alpha)
 
@@ -208,7 +208,7 @@ class IntermediateFusionPoENet(CoxPHNet):
         """
         time, event = inverse_transform_survival_target(y_true)
         time = to_tensor(time, device=self.device)
-        event = to_tensor(time, device=self.device)
+        event = to_tensor(event, device=self.device)
         y_true = torch.stack([time, event], axis=1)
         return self.criterion_(
             y_pred, y_true, self.module_.alpha, self.module_.beta

@@ -5,15 +5,7 @@
     "batch_size": 128,
     "valid_split_size": 10,
     "es_patience": 11,
-    "grid_iter": 5,
-    "alpha_range": [
-        0.01,
-        1
-    ],
-    "beta_range": [
-        0.0001,
-        0.1
-    ],
+    "grid_iter": 25,
     "p_dropout_range": [0.01, 0.5],
     "p_multimodal_dropout": 0.25,
     "hazard_fc_units": [32, 1],

@@ -1,8 +1,7 @@
 from ntpath import join
 import torch
-from survival_benchmark.python.utils.utils import (
-    negative_partial_log_likelihood, neg_par_log_likelihood
-)
+
+from survival_benchmark.python.utils.utils import neg_par_log_likelihood
 
 
 class intermediate_fusion_poe_criterion(torch.nn.Module):
@@ -16,18 +15,22 @@ class intermediate_fusion_poe_criterion(torch.nn.Module):
             "cuda" if torch.cuda.is_available() else "cpu"
         ),
     ):
+
         std_normal = torch.distributions.normal.Normal(0, 1)
         time = target[:, 0]
         event = target[:, 1]
-        # cox_joint = neg_par_log_likelihood(
-        #     predicted[0], torch.unsqueeze(time, 1).float(), torch.unsqueeze(event, 1).float()
-        # ).to(device)
-        cox_joint = negative_partial_log_likelihood(
-            predicted[0], time, event
+        cox_joint = neg_par_log_likelihood(
+            predicted[0],
+            torch.unsqueeze(time, 1).float(),
+            torch.unsqueeze(event, 1).float(),
         ).to(device)
         cox_modality = [
-            #neg_par_log_likelihood(log_hazard, torch.unsqueeze(time, 1).float(), torch.unsqueeze(event, 1).float()).to(device)
-            negative_partial_log_likelihood(log_hazard, time, event)
+            neg_par_log_likelihood(
+                log_hazard,
+                torch.unsqueeze(time, 1).float(),
+                torch.unsqueeze(event, 1).float(),
+            ).to(device)
+            # negative_partial_log_likelihood(log_hazard, time, event)
             for log_hazard in predicted[3]
         ]
         joint_kl = torch.div(
@@ -50,10 +53,8 @@ class intermediate_fusion_poe_criterion(torch.nn.Module):
         ]
         # print(cox_joint)
         # print(joint_kl)
-        # #print(torch.sum(torch.stack(cox_modality)))
-        # print(torch.stack(cox_modality))
+        # print(torch.sum(torch.stack(cox_modality)))
         # print(torch.sum(torch.stack(modality_kl)))
-
         return (
             cox_joint
             + beta * joint_kl
@@ -74,12 +75,16 @@ class intermediate_fusion_mean_criterion(torch.nn.Module):
         time, event = target[:, 0], target[:, 1]
         unicox = 0
         for i in range(len(unimodal_log_hazards)):
-            unicox += negative_partial_log_likelihood(
-                unimodal_log_hazards[i], time, event
+            unicox += neg_par_log_likelihood(
+                unimodal_log_hazards[i],
+                torch.unsqueeze(time, 1).float(),
+                torch.unsqueeze(event, 1).float(),
             )
 
-        joint_cox = negative_partial_log_likelihood(
-            joint_log_hazard, time, event
+        joint_cox = neg_par_log_likelihood(
+            joint_log_hazard,
+            torch.unsqueeze(time, 1).float(),
+            torch.unsqueeze(event, 1).float(),
         )
 
         return joint_cox + alpha * unicox
@@ -88,6 +93,10 @@ class intermediate_fusion_mean_criterion(torch.nn.Module):
 class dae_criterion(torch.nn.Module):
     def forward(self, predicted, target, alpha):
         time, event = target[:, 0], target[:, 1]
-        cox_loss = negative_partial_log_likelihood(predicted[0], time, event)
+        cox_loss = neg_par_log_likelihood(
+            predicted[0],
+            torch.unsqueeze(time, 1).float(),
+            torch.unsqueeze(event, 1).float(),
+        )
         reconstruction_loss = torch.nn.MSELoss()(predicted[1], predicted[2])
         return alpha * cox_loss + reconstruction_loss

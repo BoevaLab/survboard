@@ -12,7 +12,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.utils.fixes import loguniform
 from skorch.callbacks import EarlyStopping, LRScheduler
 from sksurv.nonparametric import kaplan_meier_estimator
@@ -87,24 +87,20 @@ def main(
     setting,
     missing_modalities,
 ):
+    save_here = os.path.join(results_path, "results")
+    save_loss = os.path.join(results_path, "losses")
+    os.makedirs(save_here, exist_ok=True)
+    os.makedirs(save_loss, exist_ok=True)
+
     # setup logging
     logging.basicConfig(
         handlers=[
-            logging.FileHandler(
-                os.path.join(results_path, f"{model_name}.log")
-            ),
+            logging.FileHandler(os.path.join(save_here, f"{model_name}.log")),
             logging.StreamHandler(sys.stdout),
         ],
     )
     logger = logging.getLogger(f"{model_name}")
     logger.setLevel(logging.DEBUG)
-
-    save_here = os.path.join(results_path, "results")
-    if setting == "missing":
-        save_here = os.path.join(save_here, missing_modalities)
-    save_loss = os.path.join(results_path, "losses")
-    os.makedirs(save_here, exist_ok=True)
-    os.makedirs(save_loss, exist_ok=True)
 
     with open(config_path, "r") as f:
         config = json.load(f)
@@ -116,10 +112,8 @@ def main(
         json.dump(params, f)
 
     seed_torch(params.get("random_seed"))
-    grid_iter = params.get("grid_iter", 5)
-    alpha_range = params.get("alpha_range", [0.001, 1])
-    beta_range = params.get("beta_range", [0.001, 1])
-    p_dropout_range = params.get("p_dropout_range", [0.0, 0.5])
+    grid_iter = params.get("grid_iter", 50)
+    p_dropout_range = params.get("p_dropout_range", [0.01, 0.5])
 
     logger.info(f"Starting model: {model_name}")
     if setting == "pancancer":
@@ -236,7 +230,6 @@ def main(
                         data_dir, f"splits/{project}/{cancer}_test_splits.csv"
                     )
                 )
-
         for outer_split in range(25):
             logger.info(f"Starting split: {outer_split + 1} / 25")
 
@@ -304,7 +297,7 @@ def main(
                 [
                     (
                         "numerical",
-                        make_pipeline(MinMaxScaler()),
+                        make_pipeline(StandardScaler()),
                         np.where(X_train.dtypes != "object")[0],
                     ),
                     (
@@ -312,7 +305,8 @@ def main(
                         make_pipeline(
                             OneHotEncoder(
                                 sparse=False, handle_unknown="ignore"
-                            )
+                            ),
+                            StandardScaler(),
                         ),
                         np.where(X_train.dtypes == "object")[0],
                     ),
@@ -323,42 +317,6 @@ def main(
                     [X_train, data_missing],
                     axis=0,
                 )
-                print(X_train.shape)
-                print(
-                    pd.concat(
-                        [
-                            time[
-                                np.array(
-                                    [
-                                        item
-                                        for sublist in train_ix
-                                        for item in sublist
-                                    ]
-                                )
-                            ],
-                            time_missing,
-                        ],
-                        axis=0,
-                    ).shape
-                )
-                print(
-                    pd.concat(
-                        [
-                            event[
-                                np.array(
-                                    [
-                                        item
-                                        for sublist in train_ix
-                                        for item in sublist
-                                    ]
-                                )
-                            ],
-                            event_missing,
-                        ],
-                        axis=0,
-                    ).shape
-                )
-
                 y_train = transform_survival_target(
                     pd.concat(
                         [
@@ -507,15 +465,10 @@ def main(
 
             # using if-else for net is the best and efficient option
             param_distributions = {
-                "module__alpha": loguniform(alpha_range[0], alpha_range[1]),
                 "module__p_dropout": loguniform(
                     p_dropout_range[0], p_dropout_range[1]
                 ),
             }
-            if model_name == "poe":
-                param_distributions.update(
-                    {"module__beta": loguniform(beta_range[0], beta_range[1])}
-                )
             grid = RandomizedSearchCV(
                 net,
                 param_distributions,
@@ -544,10 +497,12 @@ def main(
                     survival_probabilities = np.stack(
                         [
                             i(
-                                pd.Series(y_train)
-                                .str.rsplit("|")
-                                .apply(lambda x: int(x[0]))
-                                .values
+                                np.unique(
+                                    pd.Series(y_train)
+                                    .str.rsplit("|")
+                                    .apply(lambda x: int(x[0]))
+                                    .values
+                                )
                             )
                             .detach()
                             .numpy()
@@ -558,10 +513,12 @@ def main(
 
                     sf_df = pd.DataFrame(
                         survival_probabilities,
-                        columns=pd.Series(y_train)
-                        .str.rsplit("|")
-                        .apply(lambda x: int(x[0]))
-                        .values,
+                        columns=np.unique(
+                            pd.Series(y_train)
+                            .str.rsplit("|")
+                            .apply(lambda x: int(x[0]))
+                            .values
+                        ),
                     )
 
                     sf_df.to_csv(
@@ -581,7 +538,9 @@ def main(
                         )
                         survival_probabilities = np.stack(
                             [
-                                i(time[train_splits[ix]]).detach().numpy()
+                                i(np.unique(time[train_splits[ix]].values))
+                                .detach()
+                                .numpy()
                                 for i in survival_functions
                             ]
                         )
@@ -589,7 +548,7 @@ def main(
 
                         sf_df = pd.DataFrame(
                             survival_probabilities,
-                            columns=time[train_splits[ix]],
+                            columns=np.unique(time[train_splits[ix]].values),
                         )
 
                         sf_df.to_csv(
@@ -608,7 +567,8 @@ def main(
                     "w",
                 ) as f:
                     json.dump(grid.best_estimator_.history, f)
-            except:
+            except Exception as e:
+                print(e)
                 logger.info(
                     "Error encountered - replacing failing iteration with Kaplan-Meier estimate."
                 )
@@ -651,7 +611,6 @@ def main(
                             ),
                             index=False,
                         )
-
     logger.info("Experiment Complete")
 
 

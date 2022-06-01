@@ -76,6 +76,21 @@ def create_risk_matrix(observed_survival_time):
         .T
     )
 
+def get_R_matrix(survival_time):
+    """
+    Create an indicator matrix of risk sets, where T_j >= T_i.
+    Input:
+        survival_time: a Pytorch tensor that the number of rows is equal top the number of samples 
+    Output:
+        indicator matrix: an indicator matrix
+    """
+    batch_length = survival_time.shape[0]
+    R_matrix = np.zeros([batch_length, batch_length], dtype=int)
+    for i in range(batch_length):
+        for j in range(batch_length):
+            R_matrix[i, j] = survival_time[j] >= survival_time[i]
+    return R_matrix
+
 
 class StratifiedSurvivalKFold(StratifiedKFold):
     """Adapt `StratifiedKFold` to make it usable with our adapted
