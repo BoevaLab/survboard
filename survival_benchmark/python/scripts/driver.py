@@ -12,12 +12,9 @@ from sklearn.compose import ColumnTransformer
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import (
-    OneHotEncoder,
-    StandardScaler,
-)
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.utils.fixes import loguniform
-from skorch.callbacks import EarlyStopping, LRScheduler, GradientNormClipping
+from skorch.callbacks import EarlyStopping, LRScheduler
 from sksurv.nonparametric import kaplan_meier_estimator
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
@@ -295,9 +292,13 @@ def main(
             )
             if setting == "pancancer":
                 X_train = pd.concat(
-                    [X_train, data_missing],
+                    [
+                        X_train,
+                        data_missing,
+                    ],
                     axis=0,
                 )
+                print(X_train.shape)
                 y_train = transform_survival_target(
                     pd.concat(
                         [
@@ -378,6 +379,8 @@ def main(
                 == 1
                 else False
             )
+            if setting == "pancancer":
+                droplast_train = True
             num_batches_valid = np.floor(
                 len(X_train) / params.get("valid_split_size")
             ) / params.get("batch_size")
@@ -421,7 +424,7 @@ def main(
                             patience=params.get("es_patience"),
                             load_best=True,
                         ),
-                    )
+                    ),
                 ],
             }
             if model_name == "poe":
@@ -453,8 +456,6 @@ def main(
                     p_dropout_range[0], p_dropout_range[1]
                 ),
             }
-            print(X_train.shape)
-            print(y_train.shape)
             grid = RandomizedSearchCV(
                 net,
                 param_distributions,
@@ -467,11 +468,16 @@ def main(
                 refit=True,
                 random_state=params.get("random_seed"),
                 error_score=np.nan,
-                cv=StratifiedSurvivalKFold(n_splits=5),
+                cv=StratifiedSurvivalKFold(
+                    n_splits=5,
+                    shuffle=bool(setting == "pancancer"),
+                    random_state=42,
+                ),
             )
             try:
                 grid.fit(
-                    X_train.to_numpy().astype(np.float32), y_train.astype(str)
+                    X_train.to_numpy().astype(np.float32),
+                    y_train.astype(str),
                 )
                 logger.info("Network Fitting Done")
                 if setting != "pancancer":
@@ -524,7 +530,7 @@ def main(
                         )
                         survival_probabilities = np.stack(
                             [
-                                i(np.unique(time[train_splits[ix]].values))
+                                i(np.unique(time[train_ix[ix]].values))
                                 .detach()
                                 .numpy()
                                 for i in survival_functions
@@ -534,7 +540,7 @@ def main(
 
                         sf_df = pd.DataFrame(
                             survival_probabilities,
-                            columns=np.unique(time[train_splits[ix]].values),
+                            columns=np.unique(time[train_ix[ix]].values),
                         )
 
                         sf_df.to_csv(

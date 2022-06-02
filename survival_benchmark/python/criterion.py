@@ -81,13 +81,11 @@ class intermediate_fusion_mean_criterion(torch.nn.Module):
                 torch.unsqueeze(time, 1).float(),
                 torch.unsqueeze(event, 1).float(),
             )
-
         joint_cox = neg_par_log_likelihood(
             joint_log_hazard,
             torch.unsqueeze(time, 1).float(),
             torch.unsqueeze(event, 1).float(),
         )
-
         return joint_cox + alpha * unicox
 
 

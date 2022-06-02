@@ -8,23 +8,11 @@ from collections.abc import Iterable
 from skorch.callbacks import Callback
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 from torch import nn
 from skorch.utils import to_numpy
 from skorch.dataset import get_len, ValidSplit
-from sklearn.model_selection import StratifiedKFold
-
-
-# class ZeroImputation(torch.nn.Module):
-#     def __init__(self) -> None:
-#         super().__init__()
-
-#     def impute(self, x):
-#         return torch.nan_to_num(x, nan=0.0)
-
-#     def forward(self):
-#         pass
+from sklearn.model_selection import StratifiedKFold, KFold
 
 
 def multimodal_dropout(x, p_multimodal_dropout, blocks, upweight=True):
@@ -336,8 +324,10 @@ def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=0):
         cost: the survival cost to be minimized
     """
     n_observed = survival_event.sum(0)
+    if n_observed <= 0:
+        # Return arbitary high value for batches in which there were no events
+        return torch.tensor(5.0, requires_grad=True)
     R_matrix = create_risk_matrix(survival_time).float()
-    R_matrix = torch.Tensor(R_matrix)
     if cuda:
         R_matrix = R_matrix.cuda()
     risk_set_sum = R_matrix.mm(torch.exp(pred))
