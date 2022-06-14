@@ -1,7 +1,7 @@
 import torch
 
-from survival_benchmark.python.autoencoder import Encoder, FCBlock
-from survival_benchmark.python.utils.utils import MultiModalDropout
+from survival_benchmark.python.utils import Encoder, FCBlock
+from survival_benchmark.python.utils.utils import MultiModalDropout, FCBlock
 
 
 class NaiveNeural(torch.nn.Module):
@@ -19,9 +19,6 @@ class NaiveNeural(torch.nn.Module):
         self.hidden_units = params.get("fc_units")
         self.params = params
         self.params["fc_dropout"] = p_dropout
-        params_encoder = self.params.copy()
-        params_encoder.update({"input_size": self.input_size})
-        self.encoder = Encoder(params_encoder)
         fc_params = {
             "input_size": self.input_size,
             "latent_dim": 1,
@@ -31,7 +28,6 @@ class NaiveNeural(torch.nn.Module):
             "fc_dropout": self.params.get("fc_dropout"),
         }
         self.log_hazard = FCBlock(fc_params)
-        self.hazard = FCBlock(fc_params)
 
     def forward(self, x):
         log_hazard = self.log_hazard(x)

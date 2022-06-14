@@ -1,18 +1,20 @@
-from ntpath import join
-import random
 import os
-
-import pandas as pd
+import random
 from collections.abc import Iterable
 
-from skorch.callbacks import Callback
 import numpy as np
+import pandas as pd
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-from torch import nn
+from sklearn.model_selection import StratifiedKFold
+from skorch.dataset import ValidSplit, get_len
 from skorch.utils import to_numpy
-from skorch.dataset import get_len, ValidSplit
-from sklearn.model_selection import StratifiedKFold, KFold
+from torch import nn
+
+from survival_benchmark.python.utils.hyperparameters import (
+    ACTIVATION_FN_FACTORY,
+)
 
 
 def multimodal_dropout(x, p_multimodal_dropout, blocks, upweight=True):
@@ -65,22 +67,6 @@ def create_risk_matrix(observed_survival_time):
     )
 
 
-def get_R_matrix(survival_time):
-    """
-    Create an indicator matrix of risk sets, where T_j >= T_i.
-    Input:
-        survival_time: a Pytorch tensor that the number of rows is equal top the number of samples
-    Output:
-        indicator matrix: an indicator matrix
-    """
-    batch_length = survival_time.shape[0]
-    R_matrix = np.zeros([batch_length, batch_length], dtype=int)
-    for i in range(batch_length):
-        for j in range(batch_length):
-            R_matrix[i, j] = survival_time[j] >= survival_time[i]
-    return R_matrix
-
-
 class StratifiedSurvivalKFold(StratifiedKFold):
     """Adapt `StratifiedKFold` to make it usable with our adapted
     survival target string format.
@@ -129,7 +115,6 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
     """
 
     def __call__(self, dataset, y=None, groups=None):
-
         if y is not None:
             # Handle string target by selecting out only the event
             # to stratify on.
@@ -262,57 +247,6 @@ def has_missing_modality(encoded_blocks, patient, matched_patient, modality):
     )
 
 
-def similarity_loss(
-    encoded_blocks,
-    M,
-    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-):
-    cos = nn.CosineSimilarity(dim=0, eps=1e-08)
-    loss = torch.tensor(0.0, device=device)
-    n_patients = encoded_blocks[0].shape[0]
-    for patient in range(n_patients):
-        for matched_patient in range(n_patients):
-            if patient == matched_patient:
-                continue
-            else:
-                patient_similarity = torch.tensor(0.0, device=device)
-                matched_patient_similarity = torch.tensor(0.0, device=device)
-                for modality in range(len(encoded_blocks)):
-                    if has_missing_modality(
-                        encoded_blocks, patient, matched_patient, modality
-                    ):
-                        pass
-                    else:
-                        patient_similarity += cos(
-                            encoded_blocks[modality][patient],
-                            encoded_blocks[modality][patient],
-                        )
-                        matched_patient_similarity += cos(
-                            encoded_blocks[modality][patient],
-                            encoded_blocks[modality][matched_patient],
-                        )
-            loss += F.relu(M - matched_patient_similarity + patient_similarity)
-    return loss
-
-
-class cheerla_et_al_criterion(nn.Module):
-    def forward(self, prediction, target, M):
-        time, event = inverse_transform_survival_target(target)
-        log_hazard_ratio = prediction[0]
-        encoded_blocks = prediction[1]
-        msk = prediction[2]
-        cox_loss = negative_partial_log_likelihood(
-            # Take out masked patients for which all modalties were missing
-            log_hazard_ratio,
-            torch.tensor(time)[msk],
-            torch.tensor(event)[msk],
-        )
-        # Not necessary to exclude masked patients since they were already
-        # excluded in the forward.
-        similarity_loss_ = similarity_loss(encoded_blocks, M)
-        return cox_loss + similarity_loss_
-
-
 def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=0):
     """
     Calculate the average Cox negative partial log-likelihood
@@ -337,16 +271,6 @@ def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=0):
     return loss
 
 
-class cox_criterion(nn.Module):
-    def forward(self, prediction, target):
-        time, event = inverse_transform_survival_target(target)
-        log_hazard_ratio = prediction
-        cox_loss = negative_partial_log_likelihood(
-            log_hazard_ratio, torch.tensor(time), torch.tensor(event)
-        )
-        return cox_loss
-
-
 def get_blocks(feature_names):
     column_types = (
         pd.Series(feature_names).str.rsplit("_").apply(lambda x: x[0]).values
@@ -367,17 +291,102 @@ def get_blocks(feature_names):
     ]
 
 
-# Adapted from https://github.com/skorch-dev/skorch/issues/280
-class FixRandomSeed(Callback):
-    """Ensure reproducibility within skorch by setting all seeds.
+class FCBlock(nn.Module):
+    """Generalisable DNN module to allow for flexibility in architecture."""
 
-    Attributes:
-        seed: Random seed to be used by the seeding functions.
+    def __init__(self, params: dict) -> None:
+        """Constructor.
 
-    """
+        Args:
+            params (dict): DNN parameter dictionary with the following keys:
+                input_size (int): Input tensor dimensions.
+                fc_layers (int): Number of fully connected layers to add.
+                fc_units (List[(int)]): List of hidden units for each layer.
+                fc_activation (str): Activation function to apply after each
+                    fully connected layer. See utils/hyperparameter.py
+                    for options.
+                fc_batchnorm (bool): Whether to include a batchnorm layer.
+                fc_dropout (float): Probability of dropout applied after eacch layer.
+                last_layer_bias (bool): True if bias should be applied in the last layer, False otherwise. Default True.
 
-    def __init__(self, seed=42):
-        self.seed = seed
+        """
+        super(FCBlock, self).__init__()
 
-    def initialize(self):
-        seed_torch(self.seed)
+        self.input_size = params.get("input_size", 256)
+        self.latent_dim = params.get("latent_dim", 64)
+
+        self.hidden_size = params.get("fc_units", [128, 64])
+        self.layers = params.get("fc_layers", 2)
+        self.scaling_factor = params.get("scaling_factor", 0.5)
+
+        self.activation = params.get("fc_activation", ["relu", "None"])
+        self.dropout = params.get("fc_dropout", 0.5)
+        self.batchnorm = eval(params.get("fc_batchnorm", "True"))
+        self.bias_last = eval(params.get("last_layer_bias", "True"))
+        bias = [True] * (self.layers - 1) + [self.bias_last]
+
+        if (
+            len(self.hidden_size) != self.layers
+            and self.scaling_factor is not None
+        ):
+            hidden_size_generated = [self.input_size]
+            # factor = (self.reduction_factor - 1) / self.reduction_factor
+            for layer in range(self.layers):
+                try:
+                    hidden_size_generated.append(self.hidden_size[layer])
+                except IndexError:
+                    if layer == self.layers - 1:
+                        hidden_size_generated.append(self.latent_dim)
+                    else:
+                        hidden_size_generated.append(
+                            int(
+                                hidden_size_generated[-1] * self.scaling_factor
+                            )
+                        )
+
+            self.hidden_size = hidden_size_generated[1:]
+
+        if len(self.activation) != self.layers:
+            if len(self.activation) == 2:
+                first, last = self.activation
+                self.activation = [first] * (self.layers - 1) + [last]
+
+            elif len(self.activation) == 1:
+                self.activation = self.activation * self.layers
+
+            else:
+                raise ValueError
+
+        modules = []
+        self.hidden_units = [self.input_size] + self.hidden_size
+        for layer in range(self.layers):
+            modules.append(
+                nn.Linear(
+                    int(self.hidden_units[layer]),
+                    int(self.hidden_units[layer + 1]),
+                    bias=bias[layer],
+                )
+            )
+            if self.activation[layer] != "None":
+                modules.append(ACTIVATION_FN_FACTORY[self.activation[layer]])
+            if self.dropout > 0:
+                if layer < self.layers - 1:
+                    modules.append(nn.Dropout(self.dropout))
+            if self.batchnorm:
+                if layer < self.layers - 1:
+                    modules.append(
+                        nn.BatchNorm1d(self.hidden_units[layer + 1])
+                    )
+        self.model = nn.Sequential(*modules)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Passes input through a feed forward neural network.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape [batch_size,*,input_size]
+
+        Returns:
+            torch.Tensor: Output tensor of shape [batch_size,*, hidden_sizes[-1]].
+        """
+
+        return self.model(x)
