@@ -4,6 +4,7 @@ library(mlr3proba)
 library(mlr3tuningspaces)
 library(prioritylasso)
 
+# Adapted from: https://github.com/mlr-org/mlr3extralearners/blob/main/R/learner_glmnet_surv_cv_glmnet.R
 LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
   inherit = mlr3proba::LearnerSurv,
   public = list(
@@ -33,7 +34,7 @@ LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
     .train = function(task) {
       library(prioritylasso)
       library(splitTools)
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
+      source(here::here("survboard", "R", "utils", "utils.R"))
       data <- as_numeric_matrix(task$data(cols = task$feature_names))
       target <- task$truth()
 
@@ -52,24 +53,23 @@ LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
       blocks <- blocks[sapply(blocks, length) > 1]
       names(blocks) <- paste0("bp", 1:length(blocks))
       pv <- pv[-grep("favor_clinical", names(pv))]
-      
+
       list(mlr3misc::invoke(
-        prioritylasso, X = data, Y = target, .args = pv,
-        foldid = foldids_formatted, blocks = blocks, 
+        prioritylasso,
+        X = data, Y = target, .args = pv,
+        foldid = foldids_formatted, blocks = blocks,
         type.measure = "deviance"
       ), data, target)
     },
     .predict = function(task) {
       library(prioritylasso)
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
-      #browser()
+      source(here::here("survboard", "R", "utils", "utils.R"))
       model <- self$model[[1]]
       train_data <- self$model[[2]]
       train_target <- self$model[[3]]
       newdata <- as_numeric_matrix(ordered_features(task, self))
       pv <- self$param_set$get_values(tags = "predict")
-      #lp <- as.numeric(invoke(predict, model, newdata = newdata, type = "link", .args = pv))
-      coefficients <- model$coefficients[which(model$coefficients!=0)]
+      coefficients <- model$coefficients[which(model$coefficients != 0)]
       lp <- as.numeric(newdata[, which(model$coefficients != 0)] %*% as.matrix(coefficients))
       surv <- get_survival_prediction_linear_cox(
         train_target,

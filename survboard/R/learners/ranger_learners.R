@@ -3,25 +3,7 @@ library(mlr3proba)
 library(mlr3tuningspaces)
 library(mlr3misc)
 
-#' @title Ranger Survival Learner
-#'
-#' @name mlr_learners_surv.ranger
-#'
-#' @description
-#' Random survival forest.
-#' Calls [ranger::ranger()] from package \CRANpkg{ranger}.
-#'
-#' @inheritSection mlr_learners_classif.ranger Custom mlr3 defaults
-#'
-#' @templateVar id surv.ranger
-#' @template learner
-#'
-#' @references
-#' `r format_bib("wright_2017", "breiman_2001")`
-#'
-#' @export
-#' @template seealso_learner
-#' @template example
+# Adapted from: https://github.com/mlr-org/mlr3learners/blob/HEAD/R/LearnerSurvRanger.R
 LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
   inherit = mlr3proba::LearnerSurv,
   public = list(
@@ -57,8 +39,6 @@ LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
         write.forest = p_lgl(default = TRUE, tags = "train")
       )
 
-      # ps$values = list(num.threads = 1L)
-
       super$initialize(
         id = "surv.ranger_custom",
         param_set = ps,
@@ -93,7 +73,7 @@ LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
   ),
   private = list(
     .train = function(task) {
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
+      source(here::here("survboard", "R", "utils", "utils.R"))
       pv <- self$param_set$get_values(tags = "train")
       pv <- convert_ratio(pv, "mtry", "mtry.ratio", length(task$feature_names))
       targets <- task$target_names
@@ -113,7 +93,7 @@ LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
       )
     },
     .predict = function(task) {
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
+      source(here::here("survboard", "R", "utils", "utils.R"))
       pv <- self$param_set$get_values(tags = "predict")
       newdata <- ordered_features(task, self)
 

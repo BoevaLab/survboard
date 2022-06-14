@@ -1,3 +1,6 @@
+# Most of the below adapted from various mlr3 and mlr3proba utils
+# https://github.com/mlr-org/mlr3proba/issues
+# https://github.com/mlr-org/mlr3
 
 # p = probability for levs[2] => matrix with probs for levs[1] and levs[2]
 pvec2mat <- function(p, levs) {
@@ -162,54 +165,6 @@ convert_ratio <- function(pv, target, ratio, n) {
 }
 
 
-
-
-
-basehaz.gbm_extrapolate <- function(t, delta, f.x, t.eval = NULL, smooth = FALSE,
-                                    cumulative = TRUE) {
-  t.unique <- sort(unique(t[delta == 1]))
-  alpha <- length(t.unique)
-  for (i in 1:length(t.unique)) {
-    alpha[i] <- sum(t[delta == 1] == t.unique[i]) /
-      sum(exp(f.x[t >= t.unique[i]]))
-  }
-
-  if (!smooth && !cumulative) {
-    if (!is.null(t.eval)) {
-      stop("Cannot evaluate unsmoothed baseline hazard at t.eval.")
-    }
-  } else {
-    if (smooth && !cumulative) {
-      lambda.smooth <- supsmu(t.unique, alpha)
-    } else {
-      if (smooth && cumulative) {
-        lambda.smooth <- supsmu(t.unique, cumsum(alpha))
-      } else { # (!smooth && cumulative) - THE DEFAULT
-        lambda.smooth <- list(x = t.unique, y = cumsum(alpha))
-      }
-    }
-  }
-
-
-  obj <- if (!is.null(t.eval)) {
-    approx(lambda.smooth$x, lambda.smooth$y, xout = t.eval, rule = 2)$y
-  } else {
-    approx(lambda.smooth$x, lambda.smooth$y, xout = t, rule = 2)$y
-  }
-
-  return(obj)
-}
-
-
-
-
-get_survival_prediction_linear_cox <- function(t, delta, f.x_train, f.x_test) {
-  cumulative_baseline_hazard <- basehaz.gbm_extrapolate(t, delta, f.x_train, cumulative = TRUE)
-  survival_function <- exp(-matrix(rep(f.x_test, length(cumulative_baseline_hazard)), byrow = FALSE, nrow = length(f.x_test)) * matrix(rep(cumulative_baseline_hazard, length(f.x_test)), nrow = length(f.x_test), ncol = length(cumulative_baseline_hazard), byrow = TRUE))
-  return(survival_function)
-}
-
-
 get_survival_prediction_linear_cox <- function(train_target, train_data, coefficients, newdata) {
   library(survival)
   library(pec)
@@ -231,7 +186,10 @@ get_prioritylasso_block_order <- function(target, data, blocks, foldid, lambda.t
   mean_absolute_coefficients <- c()
   for (i in 1:length(blocks)) {
     tmp <- cv.glmnet(
-      data[, grep(blocks[i], colnames(data))],
+      data[
+        ,
+        which(sapply(strsplit(colnames(data), "\\_"), function(x) x[[1]]) == blocks[i])
+      ],
       y = target,
       foldid = foldid,
       type.measure = "deviance",
@@ -240,80 +198,12 @@ get_prioritylasso_block_order <- function(target, data, blocks, foldid, lambda.t
     )
     mean_absolute_coefficients <- c(mean_absolute_coefficients, mean(abs(extract.coef(tmp, lambda.type)[, 1])))
   }
-  block_order <- blocks[sort(mean_absolute_coefficients, index.return = TRUE)$ix]
+  block_order <- blocks[sort(mean_absolute_coefficients, index.return = TRUE, decreasing = TRUE)$ix]
   if (favor_clinical) {
-    block_order <- c("clinical", block_order[-grep("clinical", block_order)])
+    block_order <- c(
+      "clinical",
+      block_order[-which(names(block_order) == "clinical")]
+    )
   }
   return(block_order)
-}
-
-# All of the following adapted from pycox: https://github.com/havakv/pycox/blob/master/pycox/evaluation/concordance.py
-is_comparable <- function(t_i, t_j, d_i, d_j) {
-  return((t_i < t_j) & d_i) | ((t_i == t_j) & (d_i | d_j))
-}
-
-
-is_comparable_antolini <- function(t_i, t_j, d_i, d_j) {
-  return((t_i < t_j) & d_i) | ((t_i == t_j) & d_i & (d_j == 0))
-}
-
-is_concordant <- function(s_i, s_j, t_i, t_j, d_i, d_j) {
-  conc <- 0
-  if (t_i < t_j) {
-    conc <- (s_i < s_j) + (s_i == s_j) * 0.5
-  } else if (t_i == t_j) {
-    if (d_i & d_j) {
-      conc <- 1. - (s_i != s_j) * 0.5
-    } else if (d_i) {
-      conc <- (s_i < s_j) + (s_i == s_j) * 0.5 # different from RSF paper.
-    } else if (d_j) {
-      conc <- (s_i > s_j) + (s_i == s_j) * 0.5 # different from RSF paper.
-    }
-  }
-  return(conc * is_comparable(t_i, t_j, d_i, d_j))
-}
-
-is_concordant_antolini <- function(s_i, s_j, t_i, t_j, d_i, d_j) {
-  return((s_i < s_j) & is_comparable_antolini(t_i, t_j, d_i, d_j))
-}
-
-
-sum_comparable <- function(t, d, is_comparable_func) {
-  n <- length(t)
-  count <- 0
-  for (i in 1:n) {
-    for (j in 1:n) {
-      if (j != i) {
-        count <- count + is_comparable_func(t[i], t[j], d[i], d[j])
-      }
-    }
-  }
-  return(count)
-}
-
-sum_concordant <- function(s, t, d) {
-  n <- length(t)
-  count <- 0
-  for (i in 1:n) {
-    for (j in 1:n) {
-      if (j != i) {
-        count <- count + is_concordant(s[i, i], s[i, j], t[i], t[j], d[i], d[j])
-      }
-    }
-  }
-  return(count)
-}
-
-sum_concordant_disc <- function(s, t, d, s_idx, is_concordant_func) {
-  n <- length(t)
-  count <- 0
-  for (i in 1:n) {
-    idx <- s_idx[i]
-    for (j in 1:n) {
-      if (j != i) {
-        count <- count + is_concordant_func(s[idx, i], s[idx, j], t[i], t[j], d[i], d[j])
-      }
-    }
-  }
-  return(count)
 }
