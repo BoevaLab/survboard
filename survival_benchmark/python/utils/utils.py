@@ -129,7 +129,6 @@ class StratifiedSkorchSurvivalSplit(ValidSplit):
     """
 
     def __call__(self, dataset, y=None, groups=None):
-
         if y is not None:
             # Handle string target by selecting out only the event
             # to stratify on.

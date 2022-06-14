@@ -93,7 +93,8 @@ LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
   ),
   private = list(
     .train = function(task) {
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
+      browser()
+      source(here::here("survival_benchmark", "R", "utils", "utils.R"))
       pv <- self$param_set$get_values(tags = "train")
       pv <- convert_ratio(pv, "mtry", "mtry.ratio", length(task$feature_names))
       targets <- task$target_names
@@ -113,7 +114,8 @@ LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
       )
     },
     .predict = function(task) {
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
+      browser()
+      source(here::here("survival_benchmark", "R", "utils", "utils.R"))
       pv <- self$param_set$get_values(tags = "predict")
       newdata <- ordered_features(task, self)
 

@@ -30,8 +30,8 @@ LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
     #' Creates a new instance of this [R6][R6::R6Class] class.
     initialize = function() {
       ps <- ps(
-        s                    = p_fct(c("lambda.1se", "lambda.min"), default = "lambda.min", tags = "predict"),
-        standardize          = p_lgl(default = TRUE, tags = "train"),
+        s = p_fct(c("lambda.1se", "lambda.min"), default = "lambda.min", tags = "predict"),
+        standardize = p_lgl(default = TRUE, tags = "train"),
         favor_clinical = p_lgl(default = FALSE, tags = "train"),
         nfolds = p_int(3, 10, default = 5, tags = "train")
       )
@@ -48,54 +48,47 @@ LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
   private = list(
     .train = function(task) {
       library(splitTools)
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
+      library(mlr3misc)
+      source(here::here("survival_benchmark", "R", "utils", "utils.R"))
       data <- as_numeric_matrix(task$data(cols = task$feature_names))
       target <- task$truth()
-      pv = self$param_set$get_values(tags = "train")
+      pv <- self$param_set$get_values(tags = "train")
       foldids <- create_folds(target[, 2], k = pv$nfolds, invert = TRUE, type = "stratified")
       foldids_formatted <- rep(1, nrow(data))
       for (i in 2:length(foldids)) {
         foldids_formatted[foldids[[i]]] <- i
       }
-      
+
       pv$foldid <- foldids_formatted
-      pv <- pv[-grep("nfolds", names(pv))]
+      pv <- pv[-which(names(pv) == "nfolds")]
       pv$family <- "cox"
       penalty.factor <- rep(1, length(task$feature_names))
       if (pv$favor_clinical) {
-        penalty.factor[grep("clinical", task$feature_names)] <- 0
-        pv <- pv[-grep("favor_clinical", names(pv))]
+        penalty.factor[which(sapply(strsplit(task$feature_names, "\\_"), function(x) x[[1]]) == "clinical")] <- 0
+        pv <- pv[-which(names(pv) == "favor_clinical")]
       }
-      
-      pv$penalty.factor <- penalty.factor
 
-      list(glmnet_invoke(data, target, pv, cv = TRUE), data, target)
+      pv$penalty.factor <- penalty.factor
+      glmnet_fit <- mlr3misc::invoke(glmnet::cv.glmnet,
+        data, target,
+        .args = pv
+      )
+      tmp <- extract.coef(glmnet_fit)
+      coefficients <- tmp[, 1]
+      names(coefficients) <- rownames(tmp)
+      browser()
+      cox_helper <- transform_cox_model(coefficients, data, target)
+      cox_helper
     },
     .predict = function(task) {
-      library(coefplot)
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
-      model <- self$model[[1]]
-      train_data <- self$model[[2]]
-      train_target <- self$model[[3]]
+      browser()
+      source(here::here("survival_benchmark", "R", "utils", "utils.R"))
       newdata <- as_numeric_matrix(ordered_features(task, self))
-      pv <- self$param_set$get_values(tags = "predict")
-      pv <- rename(pv, "predict.gamma", "gamma")
-      if (unname(model$nzero[which.min(model$cvlo)]) == 0) {
-        lp <- rep(0, nrow(newdata))
-        coefficients <- rep(0, ncol(newdata))
-      }
-      else {
-        lp <- as.numeric(invoke(predict, model, newx = newdata, type = "link", .args = pv))
-        coefficients <- setNames(extract.coef(model)[, 1], rownames(extract.coef(model)))
-      }
-      surv <- get_survival_prediction_linear_cox(
-        train_target,
-        train_data,
-        coefficients,
-        newdata
-      )
+      newdata <- data.frame(newdata)[, colnames(newdata) %in% names(self$model$coefficients)]
+      surv <- pec::predictSurvProb(self$model, newdata, self$model$y[, 1])
+      lp <- predict(self$model, newdata)
       mlr3proba::.surv_return(
-        times = train_target[, 1],
+        times = self$model$y[, 1],
         surv = surv,
         lp = lp
       )

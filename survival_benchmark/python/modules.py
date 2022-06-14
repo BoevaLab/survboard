@@ -1,76 +1,42 @@
+from ast import Mult
 import torch
 
 from survival_benchmark.python.autoencoder import Decoder, Encoder, FCBlock
 from survival_benchmark.python.utils.utils import MultiModalDropout
 
 
-class DAE(MultiModalDropout):
+class DAE(torch.nn.Module):
     def __init__(
         self,
         params,
         blocks,
-        missing_modalities="impute",
-        p_multimodal_dropout=0.0,
-        noise_factor=1,
-        alpha=0.01,
-        upweight=True,
+        missing_modalities,
+        p_multimodal_dropout,
         p_dropout=0.0,
     ) -> None:
-        super().__init__(
-            blocks=blocks,
-            p_multimodal_dropout=p_multimodal_dropout,
-            upweight=upweight,
-        )
-
-        self.alpha = alpha
-        self.noise_factor = noise_factor
-        self.missing_modalities = missing_modalities
-
+        super().__init__()
         self.input_size = sum([len(i) for i in blocks])
         self.latent_dim = params.get("latent_dim")
         self.hidden_units = params.get("fc_units")
         self.params = params
         self.params["fc_dropout"] = p_dropout
         params_encoder = self.params.copy()
-        params_decoder = self.params.copy()
         params_encoder.update({"input_size": self.input_size})
         self.encoder = Encoder(params_encoder)
-
-        params_decoder.update(
-            {
-                "input_size": self.latent_dim,
-                "latent_dim": self.input_size,
-                "fc_units": self.hidden_units[-2::-1],
-                "scaling_factor": 2,
-            }
-        )
-        self.decoder = Decoder(params_decoder)
         fc_params = {
-            "input_size": self.latent_dim,
+            "input_size": self.input_size,
             "latent_dim": 1,
             "last_layer_bias": self.params.get("hazard_fc_last_layer_bias"),
-            "fc_layers": self.params.get("fc_layers"),
-            "fc_units": self.params.get("hazard_fc_units"),
+            "fc_layers": 3,
+            "fc_units": [128, 64, 1],
             "fc_dropout": self.params.get("fc_dropout"),
         }
+        self.log_hazard = FCBlock(fc_params)
         self.hazard = FCBlock(fc_params)
 
     def forward(self, x):
-        if self.training:
-            x = self.zero_impute(x)
-            x_dropout = x
-            if self.missing_modalities == "multimodal_dropout":
-                x_dropout = self.multimodal_dropout(x)
-            x_noisy = x_dropout + (
-                self.noise_factor * torch.randn(size=x_dropout.shape)
-            )
-        else:
-            x = self.zero_impute(x)
-            x_noisy = x
-        encoded = self.encoder(x_noisy)
-        decoded = self.decoder(encoded)
-        log_hazard = self.hazard(encoded)
-        return log_hazard, x, decoded
+        log_hazard = self.log_hazard(x)
+        return log_hazard
 
 
 class IntermediateFusionMean(MultiModalDropout):

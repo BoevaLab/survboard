@@ -7,27 +7,27 @@ library(mlr3proba)
 library(rjson)
 library(dplyr)
 library(forcats)
-future::plan("sequential")
+future::plan("multisession", workers = 4)
 
 config <- rjson::fromJSON(
   file = here::here("config", "config.json")
 )
 
 remove_constants <- po("removeconstants")
-impute <- po("imputeconstant", affect_columns = selector_type(c("factor")), constant = "NA", check_levels = FALSE)
 encode <- po("encode", method = "treatment")
+fix_factors <- po("fixfactors")
+impute_missing_prediction <- po("imputeoor", affect_columns = selector_type("factor"))
+remove_column_missing_train_factor <- po("select", selector = selector_invert(selector_grep("DROPME")))
+impute <- po("imputeconstant", constant = 0, affect_columns = selector_grep("clinical"))
 
-source(here::here("survival-benchmark", "R", "learners", "cv_ridge_learners.R"))
 
+pipe <- remove_constants %>>% fix_factors
+pipe_ohe <- pipe %>>% encode %>>% impute
 
 set.seed(42)
 learners <- list(
-  remove_constants %>>% 
-    encode %>>%
-    #po("fixfactors", droplevels = FALSE) %>>% 
-    po("learner",
-                                       learner = lrn("surv.cv_ridge", s ="lambda.min", standardize = TRUE, nfolds = 5),
-                                        #learner = lrn("surv.cv_ridge", nfolds ),
+  pipe_ohe %>>% 
+    po("learner", learner = lrn("surv.coxph"),
                                        id = "clinical_only_cox"
   )
 )
@@ -42,7 +42,7 @@ format_splits <- function(raw_splits) {
 
 
 grid <- data.frame()
-for (cancer in config$icgc_cancers[3:3]) {
+for (cancer in config$icgc_cancers) {
   data <- vroom::vroom(
     here::here(
       "~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
@@ -50,17 +50,17 @@ for (cancer in config$icgc_cancers[3:3]) {
       paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
     )
   )
-  
-  lel <- data.frame(data[, c(which(substr(colnames(data), 1, 8) == "clinical"), which(colnames(data) == "OS"), which(colnames(data) == "OS_days"))]) %>% mutate(across(where(is.character), as.factor)) %>% mutate_if(is.factor,
-                                                                                                                                            fct_explicit_na,
-                                                                                                                                            na_level = "NA")
-  tmp <- as_task_surv(lel,
+  data <- data.frame(data[, c(which(colnames(data) == "OS"), which(colnames(data) == "OS_days") , which(sapply(strsplit(colnames(data), "_"), function(x) x[[1]]) == "clinical"))]) %>%
+    mutate(across(where(is.character), as.factor)) %>%
+    mutate(across(where(is.factor), forcats::fct_explicit_na, "MISSING"))
+  tmp <- as_task_surv(data,
                       time = "OS_days",
                       event = "OS",
                       type = "right",
                       id = cancer
   )
   tmp$add_strata("OS")
+  rm(data)
   train_splits <- format_splits(readr::read_csv(here::here(
     "~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
     "survival_benchmark", "data", "splits", "ICGC", paste0(cancer, "_train_splits.csv")
@@ -78,7 +78,7 @@ for (cancer in config$icgc_cancers[3:3]) {
 progressr::handlers(global = TRUE)
 lgr::get_logger("mlr3")$set_threshold("warn")
 set.seed(42)
-bmr <- benchmark(grid)
+bmr <- benchmark(grid, store_backends = FALSE, clone = c("learner"))
 
 saveRDS(bmr, here::here("data", "results", "clinical_cox_icgc.rds"))
 
@@ -92,11 +92,10 @@ for (cancer in config$target_cancers) {
       paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
     )
   )
-  
-  lel <- data.frame(data[, c(which(substr(colnames(data), 1, 8) == "clinical"), which(colnames(data) == "OS"), which(colnames(data) == "OS_days"))]) %>% mutate(across(where(is.character), as.factor)) %>% mutate_if(is.factor,
-                                                                                                                                            fct_explicit_na,
-                                                                                                                                            na_level = "NA")
-  tmp <- as_task_surv(lel,
+  data <- data.frame(data[, c(which(colnames(data) == "OS"), which(colnames(data) == "OS_days") , which(sapply(strsplit(colnames(data), "_"), function(x) x[[1]]) == "clinical"))]) %>%
+    mutate(across(where(is.character), as.factor)) %>%
+    mutate(across(where(is.factor), forcats::fct_explicit_na, "MISSING"))
+  tmp <- as_task_surv(data,
                       time = "OS_days",
                       event = "OS",
                       type = "right",
@@ -126,7 +125,7 @@ saveRDS(bmr, here::here("data", "results", "clinical_cox_target.rds"))
 
 set.seed(42)
 grid <- data.frame()
-for (cancer in config$tcga_cancers[-grep("SKCM", config$tcga_cancers)]) {
+for (cancer in config$tcga_cancers) {
   data <- vroom::vroom(
     here::here(
       "~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
@@ -134,11 +133,10 @@ for (cancer in config$tcga_cancers[-grep("SKCM", config$tcga_cancers)]) {
       paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
     )
   )
-  data <- data[, -grep("clinical_patient_id", colnames(data))]
-  lel <- data.frame(data[, c(which(substr(colnames(data), 1, 8) == "clinical"), which(colnames(data) == "OS"), which(colnames(data) == "OS_days"))]) %>% mutate(across(where(is.character), as.factor)) %>% mutate_if(is.factor,
-                                                                                                                                                                                                                      fct_explicit_na,
-                                                                                                                                                                                                                      na_level = "NA")
-  tmp <- as_task_surv(lel,
+  data <- data.frame(data[, c(which(colnames(data) == "OS"), which(colnames(data) == "OS_days") , which(sapply(strsplit(colnames(data), "_"), function(x) x[[1]]) == "clinical"))]) %>%
+    mutate(across(where(is.character), as.factor)) %>%
+    mutate(across(where(is.factor), forcats::fct_explicit_na, "MISSING"))
+  tmp <- as_task_surv(data,
                       time = "OS_days",
                       event = "OS",
                       type = "right",

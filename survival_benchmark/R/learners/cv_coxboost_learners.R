@@ -65,7 +65,8 @@ LearnerSurvCVCoxboostCustom = R6Class("LearnerSurvCVCoxboostCustom",
                                 
                                 private = list(
                                   .train = function(task) {
-                                    source(here::here("survival-benchmark", "R", "utils", "utils.R"))
+                                    browser()
+                                    source(here::here("survival_benchmark", "R", "utils", "utils.R"))
                                     library(withr)
                                     library(splitTools)
                                     
@@ -153,8 +154,8 @@ LearnerSurvCVCoxboostCustom = R6Class("LearnerSurvCVCoxboostCustom",
                                   },
                                   
                                   .predict = function(task) {
-                                    source(here::here("survival-benchmark", "R", "utils", "utils.R"))
-                                    
+                                    source(here::here("survival_benchmark", "R", "utils", "utils.R"))
+                                    browser()
                                     pars = self$param_set$get_values(tags = "predict")
                                     
                                     # get newdata and ensure same ordering in train and predict

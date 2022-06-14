@@ -90,12 +90,11 @@ class intermediate_fusion_mean_criterion(torch.nn.Module):
 
 
 class dae_criterion(torch.nn.Module):
-    def forward(self, predicted, target, alpha):
+    def forward(self, predicted, target):
         time, event = target[:, 0], target[:, 1]
         cox_loss = neg_par_log_likelihood(
-            predicted[0],
+            predicted,
             torch.unsqueeze(time, 1).float(),
             torch.unsqueeze(event, 1).float(),
         )
-        reconstruction_loss = torch.nn.MSELoss()(predicted[1], predicted[2])
-        return alpha * cox_loss + reconstruction_loss
+        return cox_loss

@@ -31,9 +31,10 @@ LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
   ),
   private = list(
     .train = function(task) {
+      browser()
       library(prioritylasso)
       library(splitTools)
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
+      source(here::here("survival_benchmark", "R", "utils", "utils.R"))
       data <- as_numeric_matrix(task$data(cols = task$feature_names))
       target <- task$truth()
 
@@ -48,37 +49,31 @@ LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
       block_order <- get_prioritylasso_block_order(
         target, data, unique(sapply(strsplit(task$feature_names, "\\_"), function(x) x[1])), foldids_formatted, pv$lambda.type, favor_clinical
       )
-      blocks <- sapply(block_order, function(x) grep(x, task$feature_names))
+      blocks <- lapply(block_order, function(x) which(sapply(strsplit(task$feature_names, "\\_"), function(y) y[[1]]) == x))
       blocks <- blocks[sapply(blocks, length) > 1]
       names(blocks) <- paste0("bp", 1:length(blocks))
-      pv <- pv[-grep("favor_clinical", names(pv))]
-      
-      list(mlr3misc::invoke(
-        prioritylasso, X = data, Y = target, .args = pv,
-        foldid = foldids_formatted, blocks = blocks, 
+      pv <- pv[-which(names(pv) == "favor_clinical")]
+
+      prioritylasso_fit <- mlr3misc::invoke(
+        prioritylasso,
+        X = data, Y = target, .args = pv,
+        foldid = foldids_formatted, blocks = blocks,
         type.measure = "deviance"
-      ), data, target)
+      )
+      
+
+      cox_helper <- transform_cox_model(prioritylasso_fit$coefficients[which(prioritylasso_fit$coefficients != 0)], data, target)
+      cox_helper
     },
     .predict = function(task) {
-      library(prioritylasso)
-      source(here::here("survival-benchmark", "R", "utils", "utils.R"))
-      #browser()
-      model <- self$model[[1]]
-      train_data <- self$model[[2]]
-      train_target <- self$model[[3]]
+      browser()
+      source(here::here("survival_benchmark", "R", "utils", "utils.R"))
       newdata <- as_numeric_matrix(ordered_features(task, self))
-      pv <- self$param_set$get_values(tags = "predict")
-      #lp <- as.numeric(invoke(predict, model, newdata = newdata, type = "link", .args = pv))
-      coefficients <- model$coefficients[which(model$coefficients!=0)]
-      lp <- as.numeric(newdata[, which(model$coefficients != 0)] %*% as.matrix(coefficients))
-      surv <- get_survival_prediction_linear_cox(
-        train_target,
-        train_data,
-        coefficients,
-        newdata
-      )
+      newdata <- data.frame(newdata)[, colnames(newdata) %in% names(self$model$coefficients)]
+      surv <- pec::predictSurvProb(self$model, newdata, self$model$y[, 1])
+      lp <- predict(self$model, newdata)
       mlr3proba::.surv_return(
-        times = train_target[, 1],
+        times = self$model$y[, 1],
         surv = surv,
         lp = lp
       )

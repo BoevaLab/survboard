@@ -1,3 +1,4 @@
+import random
 import argparse
 import json
 import logging
@@ -10,11 +11,17 @@ import pandas as pd
 import torch
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import make_scorer
-from sklearn.model_selection import RandomizedSearchCV
+from sklearn.model_selection import (
+    RandomizedSearchCV,
+    train_test_split,
+    GridSearchCV,
+)
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.utils.fixes import loguniform
 from skorch.callbacks import EarlyStopping, LRScheduler
+from skorch.dataset import Dataset
+from skorch.helper import predefined_split
 from sksurv.nonparametric import kaplan_meier_estimator
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
@@ -41,6 +48,7 @@ from survival_benchmark.python.utils.utils import (
     seed_torch,
     transform_survival_target,
 )
+from sklearn.model_selection import PredefinedSplit
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -121,8 +129,7 @@ def main(
         cancers = [0]  # Pancancer doesn't need access to cancer names
     else:
         cancers = config[f"{project.lower()}_cancers"]
-    for cancer in cancers:
-        # for cancer in ["PACA-CA"]:
+    for cancer in ["CLLE-ES"]:
         logger.info(f"Starting cancer: {cancer}")
         if setting == "standard":
             data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed_fixed.csv"
@@ -298,7 +305,6 @@ def main(
                     ],
                     axis=0,
                 )
-                print(X_train.shape)
                 y_train = transform_survival_target(
                     pd.concat(
                         [
@@ -344,7 +350,8 @@ def main(
                 y_train = transform_survival_target(
                     time[train_ix].values, event[train_ix].values
                 )
-
+            if setting == "pancancer":
+                stratification = X_train["clinical_cancer_type"].values
             X_train = ct.fit_transform(X_train)
 
             X_train = pd.DataFrame(
@@ -368,10 +375,37 @@ def main(
                     X_test[cancer] = pd.DataFrame(
                         ct.transform(X_test[cancer]), columns=X_train.columns
                     )
+                X_train, X_val, y_train, y_val = train_test_split(
+                    X_train,
+                    y_train,
+                    test_size=0.1,
+                    random_state=42,
+                    shuffle=True,
+                    stratify=stratification,
+                )
 
-            num_batches_train = (int(len(X_train) * 0.9)) / params.get(
+                valid_ds = Dataset(
+                    X_val.to_numpy().astype(np.float32), y_val.astype(str)
+                )
+                X_train_cv, X_val_cv, y_train_cv, y_val_cv = train_test_split(
+                    X_train,
+                    y_train,
+                    test_size=0.1,
+                    random_state=42,
+                    shuffle=True,
+                    stratify=stratification[X_train.index],
+                )
+                cv = PredefinedSplit(
+                    [
+                        -1 if i not in X_val_cv.index else 1
+                        for i in range(X_train.shape[0])
+                    ]
+                )
+
+            num_batches_train = (int((len(X_train) * 0.8) * 0.9)) / params.get(
                 "batch_size"
             )
+            num_batches_train = (np.round(len(X_train) * 0.9)) / params.get("batch_size")
             droplast_train = (
                 True
                 if (num_batches_train - np.floor(num_batches_train))
@@ -382,8 +416,8 @@ def main(
             if setting == "pancancer":
                 droplast_train = True
             num_batches_valid = np.floor(
-                len(X_train) / params.get("valid_split_size")
-            ) / params.get("batch_size")
+                (len(X_train) * 0.8) / params.get("valid_split_size")
+            ) / (params.get("batch_size") * 0.1)
             droplast_valid = (
                 True
                 if (num_batches_valid - np.floor(num_batches_valid))
@@ -391,6 +425,12 @@ def main(
                 == 1
                 else False
             )
+            def seed_worker(worker_id):
+                worker_seed = torch.initial_seed() % 2**32
+                np.random.seed(worker_seed)
+                random.seed(worker_seed)
+            g = torch.Generator()
+            g.manual_seed(0)
             base_net_params = {
                 "module__params": params,
                 "optimizer": torch.optim.Adam,
@@ -398,7 +438,9 @@ def main(
                 "lr": params.get("initial_lr"),
                 "train_split": StratifiedSkorchSurvivalSplit(
                     params.get("valid_split_size"), stratified=True
-                ),
+                )
+                if setting != "pancancer"
+                else predefined_split(valid_ds),
                 "batch_size": params.get("batch_size"),
                 "iterator_train__drop_last": droplast_train,
                 "iterator_valid__drop_last": droplast_valid,
@@ -426,6 +468,7 @@ def main(
                         ),
                     ),
                 ],
+                "verbose": False,
             }
             if model_name == "poe":
                 net = IntermediateFusionPoENet(
@@ -441,7 +484,6 @@ def main(
                 net = DAENet(
                     module=DAE,
                     criterion=dae_criterion,
-                    module__noise_factor=params.get("noise_factor"),
                 )
             else:
                 raise ValueError(
@@ -452,27 +494,21 @@ def main(
 
             # using if-else for net is the best and efficient option
             param_distributions = {
-                "module__p_dropout": loguniform(
-                    p_dropout_range[0], p_dropout_range[1]
-                ),
+                "module__p_dropout": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
             }
-            grid = RandomizedSearchCV(
+            if setting != "pancancer":
+                cv = StratifiedSurvivalKFold(n_splits=5)
+
+            grid = GridSearchCV(
                 net,
                 param_distributions,
-                n_iter=grid_iter,
                 scoring=make_scorer(
                     negative_partial_log_likelihood_loss,
                     greater_is_better=False,
                 ),
                 n_jobs=-1,
                 refit=True,
-                random_state=params.get("random_seed"),
-                error_score=np.nan,
-                cv=StratifiedSurvivalKFold(
-                    n_splits=5,
-                    shuffle=bool(setting == "pancancer"),
-                    random_state=42,
-                ),
+                cv=cv
             )
             try:
                 grid.fit(
@@ -516,7 +552,7 @@ def main(
                     sf_df.to_csv(
                         os.path.join(
                             save_here,
-                            f"{project}_{cancer}_{model_name}_{outer_split}.csv",
+                            f"{project}_{cancer}_{model_name}_{outer_split}_repped.csv",
                         ),
                         index=False,
                     )
@@ -560,6 +596,7 @@ def main(
                 ) as f:
                     json.dump(grid.best_estimator_.history, f)
             except Exception as e:
+                raise (e)
                 logger.info(e)
                 logger.info(
                     "Error encountered - replacing failing iteration with Kaplan-Meier estimate."

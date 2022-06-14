@@ -209,6 +209,18 @@ get_survival_prediction_linear_cox <- function(t, delta, f.x_train, f.x_test) {
   return(survival_function)
 }
 
+transform_cox_model <- function(coefficients, data, target) {
+  library(survival)
+  if (length(coefficients) <= 0) {
+    stop("Empty Lasso fitted - falling back to KM")
+  }
+  train_data <- data[, which(colnames(data) %in% names(coefficients))]
+  train_matrix <- cbind(target, train_data)
+  colnames(train_matrix)[1:2] <- c("OS_days", "OS")
+  cox_helper <- coxph(Surv(OS_days, OS) ~ ., x = TRUE, init = coefficients, iter.max = 0, data = data.frame(train_matrix))
+  return(cox_helper)
+}
+
 
 get_survival_prediction_linear_cox <- function(train_target, train_data, coefficients, newdata) {
   library(survival)
@@ -230,19 +242,19 @@ get_prioritylasso_block_order <- function(target, data, blocks, foldid, lambda.t
   library(coefplot)
   mean_absolute_coefficients <- c()
   for (i in 1:length(blocks)) {
-    tmp <- cv.glmnet(
-      data[, grep(blocks[i], colnames(data))],
+    tmp <- glmnet::cv.glmnet(
+      data[, which(sapply(strsplit(colnames(data), "\\_"), function(x) x[[1]]) == blocks[i])],
       y = target,
       foldid = foldid,
       type.measure = "deviance",
       family = "cox",
       alpha = 0
     )
-    mean_absolute_coefficients <- c(mean_absolute_coefficients, mean(abs(extract.coef(tmp, lambda.type)[, 1])))
+    mean_absolute_coefficients <- c(mean_absolute_coefficients, mean(abs(coefplot::extract.coef(tmp, lambda.type)[, 1])))
   }
-  block_order <- blocks[sort(mean_absolute_coefficients, index.return = TRUE)$ix]
+  block_order <- blocks[sort(mean_absolute_coefficients, index.return = TRUE, decreasing = TRUE)$ix]
   if (favor_clinical) {
-    block_order <- c("clinical", block_order[-grep("clinical", block_order)])
+    block_order <- c("clinical", block_order[-which(block_order == "clinical")])
   }
   return(block_order)
 }

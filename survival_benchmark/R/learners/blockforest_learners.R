@@ -42,7 +42,6 @@ LearnerSurvBlockForest = R6Class("LearnerSurvBlockForest",
                             
                             private = list(
                               .train = function(task) {
-                                browser()
                                 library(blockForest)
                                 library(survival)
                                 pv = self$param_set$get_values(tags = "train")

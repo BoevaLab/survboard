@@ -152,7 +152,7 @@ class DAENet(CoxPHNet):
         time = to_tensor(time, device=self.device)
         event = to_tensor(event, device=self.device)
         y_true = torch.stack([time, event], axis=1)
-        return self.criterion_(y_pred, y_true, self.module_.alpha)
+        return self.criterion_(y_pred, y_true)
 
     def fit(self, X, y=None, **fit_params):
         if not self.warm_start or not self.initialized_:
@@ -163,24 +163,24 @@ class DAENet(CoxPHNet):
         self.train_event = event
         self.partial_fit(X, y, **fit_params)
         self.fit_breslow(
-            self.module_.forward(torch.tensor(X))[0].detach().numpy().ravel(),
+            self.module_.forward(torch.tensor(X)).detach().numpy().ravel(),
             time,
             event,
         )
         return self
 
-    def forward(
-        self,
-        X,
-        training=False,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-    ):
-        y_infer = list(self.forward_iter(X, training=training, device=device))
-        if len(y_infer) > 1:
-            y_infer = torch.cat([i[0] for i in y_infer], axis=0)
-        else:
-            y_infer = y_infer[0][0]
-        return y_infer
+    # def forward(
+    #     self,
+    #     X,
+    #     training=False,
+    #     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    # ):
+    #     y_infer = list(self.forward_iter(X, training=training, device=device))
+    #     if len(y_infer) > 1:
+    #         y_infer = torch.cat([i[0] for i in y_infer], axis=0)
+    #     else:
+    #         y_infer = y_infer[0][0]
+    #     return y_infer
 
 
 class IntermediateFusionPoENet(CoxPHNet):

@@ -72,6 +72,7 @@ LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
   ),
   private = list(
     .train = function(task) {
+      browser()
 
       # set column names to ensure consistency in fit and predict
       self$state$feature_names <- task$feature_names
