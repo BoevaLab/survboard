@@ -5,12 +5,9 @@ from collections.abc import Iterable
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from sklearn.model_selection import StratifiedKFold
 from skorch.dataset import ValidSplit, get_len
 from skorch.utils import to_numpy
-from torch import nn
 
 from survival_benchmark.python.utils.hyperparameters import (
     ACTIVATION_FN_FACTORY,
@@ -212,31 +209,6 @@ def negative_partial_log_likelihood_loss(
     )
 
 
-def negative_partial_log_likelihood(
-    predicted_log_hazard_ratio,
-    observed_survival_time,
-    observed_event_indicator,
-    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-):
-    observed_event_indicator = observed_event_indicator.to(device)
-    observed_survival_time = observed_survival_time.to(device)
-    predicted_log_hazard_ratio = predicted_log_hazard_ratio.to(device)
-    risk_matrix = create_risk_matrix(observed_survival_time).to(device)
-    return -torch.sum(
-        observed_event_indicator.float().squeeze()
-        * (
-            predicted_log_hazard_ratio.squeeze()
-            - torch.log(
-                torch.sum(
-                    risk_matrix.float()
-                    * torch.exp(predicted_log_hazard_ratio.squeeze()),
-                    axis=1,
-                )
-            )
-        )
-    ) / torch.sum(observed_event_indicator)
-
-
 def has_missing_modality(encoded_blocks, patient, matched_patient, modality):
     return torch.all(
         encoded_blocks[modality][patient]
@@ -247,6 +219,7 @@ def has_missing_modality(encoded_blocks, patient, matched_patient, modality):
     )
 
 
+# Adapted from: https://github.com/tongli1210/BreastCancerSurvivalIntegration/tree/master/src
 def neg_par_log_likelihood(pred, survival_time, survival_event, cuda=0):
     """
     Calculate the average Cox negative partial log-likelihood
@@ -291,7 +264,7 @@ def get_blocks(feature_names):
     ]
 
 
-class FCBlock(nn.Module):
+class FCBlock(torch.nn.Module):
     """Generalisable DNN module to allow for flexibility in architecture."""
 
     def __init__(self, params: dict) -> None:
@@ -361,7 +334,7 @@ class FCBlock(nn.Module):
         self.hidden_units = [self.input_size] + self.hidden_size
         for layer in range(self.layers):
             modules.append(
-                nn.Linear(
+                torch.nn.Linear(
                     int(self.hidden_units[layer]),
                     int(self.hidden_units[layer + 1]),
                     bias=bias[layer],
@@ -371,13 +344,13 @@ class FCBlock(nn.Module):
                 modules.append(ACTIVATION_FN_FACTORY[self.activation[layer]])
             if self.dropout > 0:
                 if layer < self.layers - 1:
-                    modules.append(nn.Dropout(self.dropout))
+                    modules.append(torch.nn.Dropout(self.dropout))
             if self.batchnorm:
                 if layer < self.layers - 1:
                     modules.append(
-                        nn.BatchNorm1d(self.hidden_units[layer + 1])
+                        torch.nn.BatchNorm1d(self.hidden_units[layer + 1])
                     )
-        self.model = nn.Sequential(*modules)
+        self.model = torch.nn.Sequential(*modules)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Passes input through a feed forward neural network.
@@ -390,3 +363,20 @@ class FCBlock(nn.Module):
         """
 
         return self.model(x)
+
+
+class Encoder(torch.nn.Module):
+    def __init__(
+        self,
+        params: dict,
+        device: torch.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        ),
+    ) -> None:
+        super().__init__()
+        self.device = device
+        self.enc_params = params
+        self.encoder = FCBlock(self.enc_params)
+
+    def forward(self, x):
+        return self.encoder(x)

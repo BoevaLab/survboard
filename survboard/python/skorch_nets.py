@@ -125,7 +125,7 @@ class IntermediateFusionMeanNet(CoxPHNet):
         return y_infer
 
 
-class DAENet(CoxPHNet):
+class NaiveNeuralNet(CoxPHNet):
     def get_loss(self, y_pred, y_true, X=None, training=False):
         """Return the loss for this batch.
         Parameters

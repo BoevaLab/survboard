@@ -1,10 +1,8 @@
-import random
 import argparse
 import json
 import logging
 import os
 import sys
-from multiprocessing.sharedctypes import Value
 
 import numpy as np
 import pandas as pd
@@ -12,34 +10,30 @@ import torch
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import (
-    RandomizedSearchCV,
-    train_test_split,
     GridSearchCV,
+    PredefinedSplit,
+    train_test_split,
 )
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.utils.fixes import loguniform
 from skorch.callbacks import EarlyStopping, LRScheduler
 from skorch.dataset import Dataset
 from skorch.helper import predefined_split
 from sksurv.nonparametric import kaplan_meier_estimator
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-
 from survival_benchmark.python.criterion import (
-    dae_criterion,
     intermediate_fusion_mean_criterion,
-    intermediate_fusion_poe_criterion,
+    naive_neural_criterion,
 )
 from survival_benchmark.python.modules import (
-    DAE,
     IntermediateFusionMean,
-    IntermediateFusionPoE,
+    NaiveNeural,
 )
 from survival_benchmark.python.skorch_nets import (
-    DAENet,
     IntermediateFusionMeanNet,
-    IntermediateFusionPoENet,
+    NaiveNeuralNet,
 )
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 from survival_benchmark.python.utils.utils import (
     StratifiedSkorchSurvivalSplit,
     StratifiedSurvivalKFold,
@@ -48,7 +42,6 @@ from survival_benchmark.python.utils.utils import (
     seed_torch,
     transform_survival_target,
 )
-from sklearn.model_selection import PredefinedSplit
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -79,7 +72,7 @@ parser.add_argument(
 parser.add_argument(
     "missing_modalities",
     type=str,
-    help="How to handle missing modalities. Must be in ['impute', 'multimodal_dropout'] for DAE and IntermediateMeanFusion and in ['impute', 'multimodal_dropout', 'poe'] for IntermediateFusionPoE.",
+    help="How to handle missing modalities. Must be in ['impute'] for NaiveNeural and in ['impute, 'multimodal_dropout'] for IntermediateFusionMean",
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -120,19 +113,21 @@ def main(
         json.dump(params, f)
 
     seed_torch(params.get("random_seed"))
-    grid_iter = params.get("grid_iter", 50)
-    p_dropout_range = params.get("p_dropout_range", [0.01, 0.5])
-
     logger.info(f"Starting model: {model_name}")
     if setting == "pancancer":
         assert project == "TCGA"
         cancers = [0]  # Pancancer doesn't need access to cancer names
     else:
         cancers = config[f"{project.lower()}_cancers"]
-    for cancer in ["CLLE-ES"]:
+        cancers = [
+            cancers[i]
+            for i in range(len(cancers))
+            if i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 18]
+        ]
+    for cancer in cancers:
         logger.info(f"Starting cancer: {cancer}")
         if setting == "standard":
-            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed_fixed.csv"
+            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
             data = pd.read_csv(
                 os.path.join(data_dir, data_path),
                 low_memory=False,
@@ -141,13 +136,13 @@ def main(
             time, event = data["OS_days"].astype(int), data["OS"].astype(int)
         elif setting == "missing":
 
-            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed_fixed.csv"
+            data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
             data = pd.read_csv(
                 os.path.join(data_dir, data_path),
                 low_memory=False,
             ).drop(columns=["patient_id"])
 
-            data_path_missing = f"processed/{project}/{cancer}_data_incomplete_modalities_preprocessed_fixed.csv"
+            data_path_missing = f"processed/{project}/{cancer}_data_incomplete_modalities_preprocessed.csv"
 
             data_missing = pd.read_csv(
                 os.path.join(data_dir, data_path_missing),
@@ -370,6 +365,8 @@ def main(
                 X_test = pd.DataFrame(
                     ct.transform(X_test), columns=X_train.columns
                 )
+                X_train = [[i for i in X_train.columns if i.rsplit("_")[0] in ["gex"]]]
+                X_test = [[i for i in X_test.columns if i.rsplit("_")[0] in ["gex"]]]
             else:
                 for cancer in config["tcga_cancers"]:
                     X_test[cancer] = pd.DataFrame(
@@ -427,14 +424,6 @@ def main(
                 == 1
                 else False
             )
-
-            def seed_worker(worker_id):
-                worker_seed = torch.initial_seed() % 2**32
-                np.random.seed(worker_seed)
-                random.seed(worker_seed)
-
-            g = torch.Generator()
-            g.manual_seed(0)
             base_net_params = {
                 "module__params": params,
                 "optimizer": torch.optim.Adam,
@@ -474,25 +463,18 @@ def main(
                 ],
                 "verbose": False,
             }
-            if model_name == "poe":
-                net = IntermediateFusionPoENet(
-                    module=IntermediateFusionPoE,
-                    criterion=intermediate_fusion_poe_criterion,
-                )
-            elif model_name == "mean":
+            if model_name == "mean":
                 net = IntermediateFusionMeanNet(
                     module=IntermediateFusionMean,
                     criterion=intermediate_fusion_mean_criterion,
                 )
-            elif model_name == "dae":
-                net = DAENet(
-                    module=DAE,
-                    criterion=dae_criterion,
+            elif model_name == "naive":
+                net = NaiveNeuralNet(
+                    module=NaiveNeural,
+                    criterion=naive_neural_criterion,
                 )
             else:
-                raise ValueError(
-                    "Model name must be in ['poe', 'dae', 'mean']"
-                )
+                raise ValueError("Model name must be in ['mean', 'naive']")
 
             net.set_params(**base_net_params)
             param_distributions = {
@@ -554,7 +536,10 @@ def main(
                     sf_df.to_csv(
                         os.path.join(
                             save_here,
-                            f"{project}_{cancer}_{model_name}_{outer_split}_repped.csv",
+                            project,
+                            cancer,
+                            f"{model_name}_{setting}_gex_only",
+                            f"split_{outer_split}.csv",
                         ),
                         index=False,
                     )
@@ -584,7 +569,10 @@ def main(
                         sf_df.to_csv(
                             os.path.join(
                                 save_here,
-                                f"{project}_{cancer}_{model_name}_{outer_split}_pancancer.csv",
+                                project,
+                                cancer,
+                                f"{model_name}_{setting}_gex_only",
+                                f"split_{outer_split}.csv",
                             ),
                             index=False,
                         )
@@ -592,7 +580,10 @@ def main(
                 with open(
                     os.path.join(
                         save_loss,
-                        f"{project}_{cancer}_{model_name}_{outer_split}.json",
+                        project,
+                        cancer,
+                        f"{model_name}_{setting}_gex_only",
+                        f"split_{outer_split}.json",
                     ),
                     "w",
                 ) as f:
@@ -622,7 +613,10 @@ def main(
                     sf_df.to_csv(
                         os.path.join(
                             save_here,
-                            f"{project}_{cancer}_{model_name}_{outer_split}.csv",
+                            project,
+                            cancer,
+                            f"{model_name}_{setting}_gex_only",
+                            f"split_{outer_split}.csv",
                         ),
                         index=False,
                     )
@@ -637,7 +631,10 @@ def main(
                         sf_df.to_csv(
                             os.path.join(
                                 save_here,
-                                f"{project}_{cancer}_{model_name}_{outer_split}_pancancer.csv",
+                                project,
+                                cancer,
+                                f"{model_name}_{setting}_gex_only",
+                                f"split_{outer_split}.csv",
                             ),
                             index=False,
                         )

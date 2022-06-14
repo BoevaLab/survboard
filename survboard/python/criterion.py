@@ -2,6 +2,7 @@ import torch
 
 from survival_benchmark.python.utils.utils import neg_par_log_likelihood
 
+
 class intermediate_fusion_mean_criterion(torch.nn.Module):
     def forward(
         self,
@@ -26,7 +27,7 @@ class intermediate_fusion_mean_criterion(torch.nn.Module):
         return joint_cox + alpha * unicox
 
 
-class naive_criterion(torch.nn.Module):
+class naive_neural_criterion(torch.nn.Module):
     def forward(self, predicted, target):
         time, event = target[:, 0], target[:, 1]
         cox_loss = neg_par_log_likelihood(
