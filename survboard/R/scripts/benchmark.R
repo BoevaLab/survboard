@@ -15,15 +15,14 @@ config <- rjson::fromJSON(
 remove_constants <- po("removeconstants")
 impute <- po("imputeconstant", affect_columns = selector_type(c("factor")), constant = "NA", check_levels = FALSE)
 encode <- po("encode", method = "treatment")
-source(here::here("survival-benchmark", "R", "learners", "blockforest_learners.R"))
-source(here::here("survival-benchmark", "R", "learners", "cv_coxboost_learners.R"))
-source(here::here("survival-benchmark", "R", "learners", "cv_lasso_learners.R"))
-source(here::here("survival-benchmark", "R", "learners", "cv_prioritylasso_learners.R"))
-source(here::here("survival-benchmark", "R", "learners", "ranger_learners.R"))
+source(here::here("survboard", "R", "learners", "blockforest_learners.R"))
+source(here::here("survboard", "R", "learners", "cv_coxboost_learners.R"))
+source(here::here("survboard", "R", "learners", "cv_lasso_learners.R"))
+source(here::here("survboard", "R", "learners", "cv_prioritylasso_learners.R"))
+source(here::here("survboard", "R", "learners", "ranger_learners.R"))
 set.seed(42)
 
 learners <- list(
-  # BlockForest
   remove_constants %>>% po("learner",
     id = "BlockForest",
     learner = lrn("surv.blockforest",
@@ -32,7 +31,6 @@ learners <- list(
       block.method = "BlockForest", num.trees = 2000, mtry = NULL, nsets = 300, num.trees.pre = 1500, splitrule = "extratrees", always.select.block = 0
     )
   ),
-  # BlockForest favoring clinical data
   remove_constants %>>% po("learner",
     id = "BlockForest_favoring",
     learner = lrn("surv.blockforest",
