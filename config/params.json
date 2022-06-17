@@ -6,7 +6,6 @@
     "valid_split_size": 10,
     "es_patience": 11,
     "grid_iter": 25,
-    "p_dropout_range": [0.01, 0.5],
     "p_multimodal_dropout": 0.25,
     "hazard_fc_units": [
         32,
@@ -25,6 +24,5 @@
     ],
     "fc_layers": 2,
     "latent_dim": 64,
-    "noise_factor": 1,
     "schedule_patience": 3
 }
