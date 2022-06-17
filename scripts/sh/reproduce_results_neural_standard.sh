@@ -7,7 +7,7 @@ do
 		python ../python/scripts/driver_all.py \
     		../../data \
     		../../config/config.json ../../config/params.json \
-    		../../results_reproduced \
+    		../../results_reproduced/standard/${model}/${project}/ \
     		${model} ${project} standard impute
 	done
 done

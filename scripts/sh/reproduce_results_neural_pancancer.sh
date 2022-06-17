@@ -2,16 +2,11 @@
 
 for model in naive mean  
 do
-	for project in TCGA
-	do
-		for handle_missing in multimodal_dropout
-		do
-			python ../python/scripts/driver_all.py \
-    			../../data \
-    			../../config/config.json ../../config/params.json \
-    			../../results_reproduced \
-    			${model} ${project} pancancer ${handle_missing}
-	done
+		python ../python/scripts/driver_all.py \
+    		../../data \
+    		../../config/config.json ../../config/params.json \
+    		../../results_reproduced/pancancer/${model}/TCGA \
+    		${model} TCGA pancancer multimodal_dropout
 done
 
 
