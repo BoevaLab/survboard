@@ -2,7 +2,7 @@
 
 for model in naive mean  
 do
-	for project in TCGA TARGET ICGC
+	for project in TCGA
 	do
 		for modality in gex gex_clinical multi_omics_without_clinical 
 		do

@@ -2,7 +2,7 @@
 
 for model in naive mean  
 do
-	for project in TCGA TARGET ICGC
+	for project in TCGA
 	do
 		for handle_missing in multimodal_dropout
 		do
