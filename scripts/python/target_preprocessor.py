@@ -1,3 +1,5 @@
+import argparse
+from ast import arg
 import os
 import fnmatch
 import json
@@ -138,6 +140,10 @@ def get_modalities(count_dict, mod_len=3, threshold=100):
     return modalities_to_use
 
 
+parser = argparse.ArgumentParser()
+parser.add_argument("data_dir", type=str, help="path to directory containing TARGET cancers")
+
+
 def main(data_dir):
     cancer_folders = [folder for folder in os.listdir(data_dir) if not folder.startswith(".")]
 
@@ -228,3 +234,8 @@ def main(data_dir):
 
         final_incomplete = incomplete_df.loc[incomplete_idx]
         final_incomplete.to_csv(os.path.join(save_here, f"{cancer}_data_incomplete_modalities_preprocessed.csv"))
+
+
+if __name__ in "__main__":
+    args = parser.parse_args()
+    main(args.data_dir)
