@@ -1,6 +1,5 @@
 from torch import nn
 
-
 ACTIVATION_FN_FACTORY = {
     "relu": nn.ReLU(),
     "prelu": nn.PReLU(),

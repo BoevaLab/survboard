@@ -31,9 +31,7 @@ set.seed(42)
 
 model_names <- c(
   "BlockForest",
-  "CoxBoost",
   "RSF",
-  "prioritylasso",
   "Lasso"
 )
 
@@ -47,15 +45,6 @@ learners <- list(
       num.trees = 2000, mtry = NULL, nsets = 100, num.trees.pre = 1500, splitrule = "extratrees", always.select.block = 0
     )
   ),
-  pipe_ohe %>>% po("learner",
-    id = "CoxBoost",
-    learner = lrn("surv.cv_coxboost_custom",
-      encapsulate = c(train = "evaluate", predict = "evaluate"),
-      fallback = lrn("surv.kaplan"),
-      favor_clinical = FALSE,
-      K = 5
-    )
-  ),
   pipe %>>% impute_missing_prediction %>>% po("learner",
     id = "ranger",
     learner = lrn("surv.ranger_custom",
@@ -64,14 +53,6 @@ learners <- list(
       favor_clinical = FALSE,
       num.trees = 2000,
       splitrule = "extratrees"
-    )
-  ),
-  pipe_ohe %>>% po("learner",
-    id = "prioritylasso",
-    learner = lrn("surv.cv_prioritylasso",
-      encapsulate = c(train = "evaluate", predict = "evaluate"),
-      fallback = lrn("surv.kaplan"),
-      block1.penalization = TRUE, lambda.type = "lambda.min", standardize = TRUE, nfolds = 5, cvoffset = TRUE, cvoffsetnfolds = 5, favor_clinical = FALSE
     )
   ),
   pipe_ohe %>>% po("learner",
@@ -201,6 +182,32 @@ for (cancer in config$tcga_cancers[c(1:11, 13:17, 19)]) {
   }
 }
 
+model_names <- c(
+  "RSF",
+  "Lasso"
+)
+
+learners <- list(
+  pipe %>>% impute_missing_prediction %>>% po("learner",
+                                              id = "ranger",
+                                              learner = lrn("surv.ranger_custom",
+                                                            encapsulate = c(train = "evaluate", predict = "evaluate"),
+                                                            fallback = lrn("surv.kaplan"),
+                                                            favor_clinical = FALSE,
+                                                            num.trees = 2000,
+                                                            splitrule = "extratrees"
+                                              )
+  ),
+  pipe_ohe %>>% po("learner",
+                   id = "Lasso",
+                   learner = lrn("surv.cv_glmnet_custom",
+                                 encapsulate = c(train = "evaluate", predict = "evaluate"),
+                                 fallback = lrn("surv.kaplan"),
+                                 s = "lambda.min", standardize = TRUE, favor_clinical = FALSE, nfolds = 5
+                   )
+  )
+)
+
 for (cancer in config$tcga_cancers[c(1:11, 13:17, 19)]) {
   data <- vroom::vroom(
     here::here(
@@ -233,7 +240,7 @@ for (cancer in config$tcga_cancers[c(1:11, 13:17, 19)]) {
   )
   bmr <- benchmark(grid)
   bmr <- bmr$score()
-  for (model in 0:length(model_names[c(2, 3, 5)])) {
+  for (model in 0:length(model_names)) {
     if (!dir.exists(here::here(
       "data", "results_reproduced", "survival_functions", "TCGA", cancer, paste0(model_names[(model + 1)], "_gex_only")
     ))) {

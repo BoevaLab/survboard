@@ -35,9 +35,7 @@ model_names <- c(
   "CoxBoost",
   "RSF",
   "RSF_favoring",
-  "CoxBoost_favoring",
   "prioritylasso",
-  "prioritylasso_favoring",
   "Lasso"
 )
 
@@ -90,28 +88,11 @@ learners <- list(
     )
   ),
   pipe_ohe %>>% po("learner",
-    id = "CoxBoost_favoring",
-    learner = lrn("surv.cv_coxboost_custom",
-      encapsulate = c(train = "evaluate", predict = "evaluate"),
-      fallback = lrn("surv.kaplan"),
-      favor_clinical = TRUE,
-      K = 5
-    )
-  ),
-  pipe_ohe %>>% po("learner",
     id = "prioritylasso",
     learner = lrn("surv.cv_prioritylasso",
       encapsulate = c(train = "evaluate", predict = "evaluate"),
       fallback = lrn("surv.kaplan"),
       block1.penalization = TRUE, lambda.type = "lambda.min", standardize = TRUE, nfolds = 5, cvoffset = TRUE, cvoffsetnfolds = 5, favor_clinical = FALSE
-    )
-  ),
-  pipe_ohe %>>% po("learner",
-    id = "prioritylasso_favoring",
-    learner = lrn("surv.cv_prioritylasso",
-      encapsulate = c(train = "evaluate", predict = "evaluate"),
-      fallback = lrn("surv.kaplan"),
-      block1.penalization = TRUE, lambda.type = "lambda.min", standardize = TRUE, nfolds = 5, cvoffset = FALSE, cvoffsetnfolds = 5, favor_clinical = TRUE
     )
   ),
   pipe_ohe %>>% po("learner",

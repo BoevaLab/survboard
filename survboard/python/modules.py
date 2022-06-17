@@ -1,7 +1,7 @@
 import torch
 
 from survival_benchmark.python.utils import Encoder, FCBlock
-from survival_benchmark.python.utils.utils import MultiModalDropout, FCBlock
+from survival_benchmark.python.utils.utils import FCBlock, MultiModalDropout
 
 
 class NaiveNeural(torch.nn.Module):

@@ -1,4 +1,3 @@
-library(TCGAbiolinks)
 library(here)
 library(rjson)
 library(tibble)
@@ -16,25 +15,25 @@ Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 
 gex_master <- vroom(
   here::here(
-    "data", "raw", "TCGA", "EBPlusPlusAdjustPANCAN_IlluminaHiSeq_RNASeqV2.geneExp.tsv"
+    "data_template", "TCGA", "EBPlusPlusAdjustPANCAN_IlluminaHiSeq_RNASeqV2.geneExp.tsv"
   )
 ) %>% data.frame(check.names = FALSE)
 
 cnv_master <- vroom(here::here(
-  "data", "raw", "TCGA", "TCGA.PANCAN.sampleMap_Gistic2_CopyNumber_Gistic2_all_thresholded.by_genes.gz"
+  "data_template", "TCGA", "TCGA.PANCAN.sampleMap_Gistic2_CopyNumber_Gistic2_all_thresholded.by_genes.gz"
 )) %>% data.frame(check.names = FALSE)
 
 meth_master <- vroom(here::here(
-  "data", "raw", "TCGA", "jhu-usc.edu_PANCAN_merged_HumanMethylation27_HumanMethylation450.betaValue_whitelisted.tsv"
+  "data_template", "TCGA", "jhu-usc.edu_PANCAN_merged_HumanMethylation27_HumanMethylation450.betaValue_whitelisted.tsv"
 )) %>% data.frame(check.names = FALSE)
 
 mirna_master <- vroom(here::here(
-  "data", "raw", "TCGA", "pancanMiRs_EBadjOnProtocolPlatformWithoutRepsWithUnCorrectMiRs_08_04_16.csv"
+  "data_template", "TCGA", "pancanMiRs_EBadjOnProtocolPlatformWithoutRepsWithUnCorrectMiRs_08_04_16.csv"
 )) %>%
   data.frame(check.names = FALSE)
 
 mutation <- maftools::read.maf(here::here(
-  "data", "raw", "TCGA",
+  "data_template", "TCGA",
   "mc3.v0.2.8.PUBLIC.maf.gz"
 ))
 mut_master <- mutCountMatrix(mutation,
@@ -45,7 +44,7 @@ clinical <- read_raw_clinical_data()
 tcga_cdr <- clinical$clinical_data_resource_outcome
 tcga_w_followup <- clinical$clinical_with_followup
 rppa_master <- vroom::vroom(here::here(
-  "data", "raw", "TCGA", "TCGA-RPPA-pancan-clean.txt"
+  "data_template", "TCGA", "TCGA-RPPA-pancan-clean.txt"
 )) %>% data.frame(check.names = FALSE)
 
 non_full_cancers <- c(
