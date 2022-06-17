@@ -40,17 +40,17 @@ except FileNotFoundError:
 
 # TODO: Update these values according to the name of the module.
 setup(
-    name="survival_benchmark",
-    version=read_version("survival_benchmark/__init__.py"),  # single place for version
-    description="Installable survival_benchmark package. Modify as needed.",
+    name="survboard",
+    version=read_version("survboard/__init__.py"),  # single place for version
+    description="Installable survboard package. Modify as needed.",
     long_description=open("README.md").read(),
-    url="https://github.com/BoevaLab/survival_benchmark",
+    url="https://github.com/BoevaLab/survboard",
     author="David Wissel, Nikita Janakarajan",
     author_email="nja@zurich.ibm.com",
     # the following exclusion is to prevent shipping of tests.
     # if you do include them, add pytest to the required packages.
     packages=find_packages(".", exclude=["*tests*"]),
-    package_data={"survival_benchmark": ["py.typed"]},
+    package_data={"survboard": ["py.typed"]},
     
     extras_require={
         "vcs": VCS_REQUIREMENTS,
