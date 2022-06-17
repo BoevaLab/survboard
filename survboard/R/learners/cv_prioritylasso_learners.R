@@ -32,7 +32,6 @@ LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
   ),
   private = list(
     .train = function(task) {
-      browser()
       library(prioritylasso)
       library(splitTools)
       source(here::here("survboard", "R", "utils", "utils.R"))

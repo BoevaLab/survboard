@@ -7,8 +7,6 @@ library(mlr3misc)
 LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
   inherit = mlr3proba::LearnerSurv,
   public = list(
-    #' @description
-    #' Creates a new instance of this [R6][R6::R6Class] class.
     initialize = function() {
       ps <- ps(
         alpha = p_dbl(default = 0.5, tags = "train"),
@@ -22,7 +20,6 @@ LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
         mtry = p_int(lower = 1L, special_vals = list(NULL), tags = "train"),
         mtry.ratio = p_dbl(lower = 0, upper = 1, tags = "train"),
         num.random.splits = p_int(1L, default = 1L, tags = "train"), # requires = quote(splitrule == "extratrees")
-        # num.threads                  = p_int(1L, default = 1L, tags = c("train", "predict", "threads")),
         num.trees = p_int(1L, default = 500L, tags = c("train", "predict")),
         oob.error = p_lgl(default = TRUE, tags = "train"),
         regularization.factor = p_uty(default = 1, tags = "train"),

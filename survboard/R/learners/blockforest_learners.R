@@ -6,8 +6,6 @@ library(R6)
 LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
   inherit = mlr3proba::LearnerSurv,
   public = list(
-    #' @description
-    #' Creates a new instance of this [R6][R6::R6Class] class.
     initialize = function() {
       ps <- ps(
         block.method = p_fct(c("BlockForest", "RandomBlock", "BLockVarSel", "VarProb", "SplitWeights"), default = "BlockForest", tags = "train"),
@@ -43,8 +41,6 @@ LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
       library(blockForest)
       library(survival)
       pv <- self$param_set$get_values(tags = "train")
-      targets <- task$target_names
-
       block_order <- c(
         "clinical",
         "gex",
@@ -54,7 +50,6 @@ LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
         "mut",
         "meth"
       )
-
       blocks <- sapply(block_order, function(x) grep(x, task$feature_names))
       blocks <- blocks[sapply(blocks, length) > 1]
       names(blocks) <- paste0("bp", 1:length(blocks))
@@ -63,6 +58,10 @@ LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
         X = task$data(cols = task$feature_names),
         y = task$truth(),
         blocks = blocks,
+        # We force `num.threads = 1` to prevent 
+        # multi-threading during training, since
+        # we only parallelize outer cross-validation
+        # folds for statistical models.
         num.threads = 1,
         .args = pv
       )
@@ -74,4 +73,5 @@ LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
     }
   )
 )
+
 mlr_learners$add("surv.blockforest", LearnerSurvBlockForest)

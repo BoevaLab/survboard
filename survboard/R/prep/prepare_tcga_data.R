@@ -289,7 +289,7 @@ prepare_new_cancer_dataset <- function(cancer, include_rppa = FALSE, include_mir
   data %>%
     rename(OS_days = OS.time) %>%
     write_csv(
-      here::here("data", "processed", "TCGA", paste0(cancer, "_data_complete_modalities_preprocessed.csv"))
+      here::here("data_reproduced", "TCGA", paste0(cancer, "_data_complete_modalities_preprocessed.csv"))
     )
 
   data <- clinical %>%
@@ -373,7 +373,7 @@ prepare_new_cancer_dataset <- function(cancer, include_rppa = FALSE, include_mir
     rename(OS_days = OS.time) %>%
     write_csv(
       here::here(
-        "data", "processed", "TCGA", paste0(cancer, "_data_non_complete_modalities_preprocessed.csv")
+        "data_reproduced", "TCGA", paste0(cancer, "_data_non_complete_modalities_preprocessed.csv")
       )
     )
 }

@@ -7,9 +7,6 @@ library(mlr3tuningspaces)
 LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
   inherit = mlr3proba::LearnerSurv,
   public = list(
-
-    #' @description
-    #' Creates a new instance of this [R6][R6::R6Class] class.
     initialize = function() {
       ps <- ps(
         s = p_fct(c("lambda.1se", "lambda.min"), default = "lambda.min", tags = "predict"),
@@ -56,12 +53,10 @@ LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
       tmp <- extract.coef(glmnet_fit)
       coefficients <- tmp[, 1]
       names(coefficients) <- rownames(tmp)
-      browser()
       cox_helper <- transform_cox_model(coefficients, data, target)
       cox_helper
     },
     .predict = function(task) {
-      browser()
       source(here::here("survboard", "R", "utils", "utils.R"))
       newdata <- as_numeric_matrix(ordered_features(task, self))
       newdata <- data.frame(newdata)[, colnames(newdata) %in% names(self$model$coefficients)]

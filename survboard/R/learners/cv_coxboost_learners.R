@@ -6,8 +6,6 @@ library(R6)
 LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
   inherit = mlr3proba::LearnerSurv,
   public = list(
-    #' @description
-    #' Creates a new instance of this [R6][R6::R6Class] class.
     initialize = function() {
       ps <- ps(
         favor_clinical = p_lgl(default = FALSE, tags = "train"),
@@ -46,8 +44,6 @@ LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
       source(here::here("survboard", "R", "utils", "utils.R"))
       library(withr)
       library(splitTools)
-
-      # set column names to ensure consistency in fit and predict
       self$state$feature_names <- task$feature_names
       pars <- self$param_set$get_values(tags = "train")
 
@@ -62,9 +58,6 @@ LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
 
       pars <- pars[-grep("favor_clinical", names(pars), fixed = TRUE)]
       pars <- pars[-grep("K", names(pars), fixed = TRUE)]
-
-
-
       opt_pars <- pars[names(pars) %in% optim_args]
       cv_pars <- pars[names(pars) %in% cv_args]
       cox_pars <- pars[names(pars) %nin% c(names(opt_pars), names(cv_pars))]
@@ -130,12 +123,8 @@ LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
     },
     .predict = function(task) {
       source(here::here("survboard", "R", "utils", "utils.R"))
-
       pars <- self$param_set$get_values(tags = "predict")
-
-      # get newdata and ensure same ordering in train and predict
       newdata <- as.matrix(task$data(cols = self$state$feature_names))
-
       lp <- as.numeric(mlr3misc::invoke(predict,
         self$model,
         newdata = newdata,
@@ -159,4 +148,5 @@ LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
     }
   )
 )
+
 mlr_learners$add("surv.cv_coxboost_custom", LearnerSurvCVCoxboostCustom)

@@ -299,7 +299,7 @@ prepare_icgc <- function(cancer) {
     dplyr::rename(patient_id = icgc_donor_id) %>%
     write_csv(
       here::here(
-        "data", "processed", "ICGC", paste0(cancer, "_data_complete_modalities_preprocessed.csv")
+        "data_reproduced", "ICGC", paste0(cancer, "_data_complete_modalities_preprocessed.csv")
       )
     )
 
@@ -307,7 +307,7 @@ prepare_icgc <- function(cancer) {
     dplyr::rename(patient_id = icgc_donor_id) %>%
     write_csv(
       here::here(
-        "data", "processed", "ICGC", paste0(cancer, "_data_non_complete_modalities_preprocessed.csv")
+        "data", "ICGC", paste0(cancer, "_data_non_complete_modalities_preprocessed.csv")
       )
     )
 }
