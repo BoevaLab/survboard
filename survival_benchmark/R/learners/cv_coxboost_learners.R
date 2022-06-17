@@ -65,10 +65,10 @@ LearnerSurvCVCoxboostCustom = R6Class("LearnerSurvCVCoxboostCustom",
                                 
                                 private = list(
                                   .train = function(task) {
-                                    browser()
                                     source(here::here("survival_benchmark", "R", "utils", "utils.R"))
                                     library(withr)
                                     library(splitTools)
+                                    library(mlr3misc)
                                     
                                     # set column names to ensure consistency in fit and predict
                                     self$state$feature_names = task$feature_names
@@ -108,7 +108,7 @@ LearnerSurvCVCoxboostCustom = R6Class("LearnerSurvCVCoxboostCustom",
                                         opt_pars$penalty = NULL
                                       }
                                     } else {
-                                      cv_pars = insert_named(cv_pars, list(penalty = NULL))
+                                      cv_pars = mlr3misc::insert_named(cv_pars, list(penalty = 9 * sum(status)))
                                     }
                                     
                                     with_package("CoxBoost", {

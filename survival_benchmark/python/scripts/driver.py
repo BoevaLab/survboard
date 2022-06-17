@@ -129,7 +129,7 @@ def main(
         cancers = [0]  # Pancancer doesn't need access to cancer names
     else:
         cancers = config[f"{project.lower()}_cancers"]
-    for cancer in ["CLLE-ES"]:
+    for cancer in ["STAD"]:
         logger.info(f"Starting cancer: {cancer}")
         if setting == "standard":
             data_path = f"processed/{project}/{cancer}_data_complete_modalities_preprocessed_fixed.csv"
@@ -425,12 +425,6 @@ def main(
                 == 1
                 else False
             )
-            def seed_worker(worker_id):
-                worker_seed = torch.initial_seed() % 2**32
-                np.random.seed(worker_seed)
-                random.seed(worker_seed)
-            g = torch.Generator()
-            g.manual_seed(0)
             base_net_params = {
                 "module__params": params,
                 "optimizer": torch.optim.Adam,
@@ -506,11 +500,13 @@ def main(
                     negative_partial_log_likelihood_loss,
                     greater_is_better=False,
                 ),
-                n_jobs=-1,
+                n_jobs=1,
                 refit=True,
                 cv=cv
             )
             try:
+                X_train = X_train[[i for i in X_train.columns if i.rsplit("|")[0] != "clinical"]]
+                X_test = X_test[[i for i in X_test.columns if i.rsplit("|")[0] != "clinical"]]
                 grid.fit(
                     X_train.to_numpy().astype(np.float32),
                     y_train.astype(str),

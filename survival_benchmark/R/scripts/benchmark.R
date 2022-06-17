@@ -31,14 +31,14 @@ set.seed(42)
 
 learners <- list(
   # BlockForest
-  pipe %>>% impute_missing_prediction %>>% po("learner",
-                                              id = "BlockForest",
-                                             learner = lrn("surv.blockforest",
-                                                            encapsulate = c(train = "evaluate", predict = "evaluate"),
-    fallback = lrn("surv.kaplan"),
-    
-                                        block.method = "BlockForest",
-    num.trees = 2000, mtry = NULL, nsets = 100, num.trees.pre = 1500, splitrule = "extratrees", always.select.block = 0
+  #pipe %>>% impute_missing_prediction %>>% po("learner",
+  #                                            id = "BlockForest",
+  #                                           learner = lrn("surv.blockforest",
+  #                                                          encapsulate = c(train = "evaluate", predict = "evaluate"),
+  #  fallback = lrn("surv.kaplan"),
+  #  
+  #                                      block.method = "BlockForest",
+  #  num.trees = 2000, mtry = NULL, nsets = 100, num.trees.pre = 1500, splitrule = "extratrees", always.select.block = 0
    #                                           )
   #),
   # BlockForest favoring clinical data
@@ -52,15 +52,14 @@ learners <- list(
   #                                            )
   #),
   #pipe_ohe %>>% po("learner",
-   #                id = "CoxBoost",
-   #                learner = lrn("surv.cv_coxboost_custom",
-   #                              encapsulate = c(train = "evaluate", predict = "evaluate"),
-   #                              fallback = lrn("surv.kaplan"),
-   #                              favor_clinical = FALSE,
-   #                              penalty = "optimCoxBoostPenalty",
-   #                              K = 5
-   #                )
-  #),
+  #                 id = "CoxBoost",
+  #                 learner = lrn("surv.cv_coxboost_custom",
+                                 #encapsulate = c(train = "evaluate", predict = "evaluate"),
+                                 #fallback = lrn("surv.kaplan"),
+  #                               favor_clinical = FALSE,
+  #                               K = 5
+  #                 )
+  #)
   #pipe %>>% impute_missing_prediction %>>% po("learner",
   #                                            id = "ranger",
   #                                            learner = lrn("surv.ranger_custom",
@@ -95,9 +94,9 @@ learners <- list(
   pipe_ohe %>>% po("learner",
                    id = "prioritylasso",
                   learner = lrn("surv.cv_prioritylasso",
-                               encapsulate = c(train = "evaluate", predict = "evaluate"),
-                               fallback = lrn("surv.kaplan"),
-                               block1.penalization = TRUE, lambda.type = "lambda.min", standardize = TRUE, nfolds = 5, cvoffset = TRUE, cvoffsetnfolds = 5, favor_clinical = FALSE
+                              encapsulate = c(train = "evaluate", predict = "evaluate"),
+                              fallback = lrn("surv.kaplan"),
+                               block1.penalization = TRUE, lambda.type = "lambda.min", standardize = TRUE, nfolds = 5, cvoffset = FALSE, cvoffsetnfolds = 5, favor_clinical = TRUE
                    )
   )
   #pipe_ohe %>>% po("learner",
@@ -114,9 +113,9 @@ learners <- list(
   #                 learner = lrn("surv.cv_glmnet_custom",
   #                               encapsulate = c(train = "evaluate", predict = "evaluate"),
   #                               fallback = lrn("surv.kaplan"),
-  #                               s = "lambda.min", standardize = TRUE, favor_clinical = FALSE, nfolds = 5
-  #                 )
-  #)#,
+   #                              s = "lambda.min", standardize = TRUE, favor_clinical = FALSE, nfolds = 5
+   #                )
+  #)
   #pipe_ohe %>>% po("learner",
   #                 id = "Lasso_favoring",
   #                 learner = lrn("surv.cv_glmnet_custom",
@@ -142,19 +141,19 @@ format_splits <- function(raw_splits) {
 }
 
 
-for (cancer in c("BRCA")) {
+for (cancer in c("CLLE-ES")) {
   data <- vroom::vroom(
     here::here(
       "~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
-      "survival_benchmark", "data", "processed", "TCGA",
+      "survival_benchmark", "data", "processed", "ICGC",
       paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
     )
   )
-  data <- data.frame(data[, -which("clinical_patient_id" == colnames(data))]) %>%
+  data <- data.frame(data[, -which("patient_id" == colnames(data))]) %>%
     mutate(across(where(is.character), as.factor)) %>%
     mutate(across(where(is.factor), forcats::fct_explicit_na, "MISSING"))
-  #data <- data[, 
-  #             c(which(colnames(data) == "OS"), which(colnames(data) == "OS_days"), which(sapply(strsplit(colnames(data), "\\_"), function(x) x[[1]]) == "clinical"))]
+  data <- data[, 
+               c(which(colnames(data) == "OS"), which(colnames(data) == "OS_days"), which(sapply(strsplit(colnames(data), "\\_"), function(x) x[[1]]) == "gex"))]
   tmp <- as_task_surv(data,
     time = "OS_days",
     event = "OS",
@@ -164,11 +163,11 @@ for (cancer in c("BRCA")) {
   tmp$add_strata("OS")
   train_splits <- format_splits(readr::read_csv(here::here(
     "~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
-    "survival_benchmark", "data", "splits", "TCGA", paste0(cancer, "_train_splits.csv")
+    "survival_benchmark", "data", "splits", "ICGC", paste0(cancer, "_train_splits.csv")
   )))
   test_splits <- format_splits(readr::read_csv(here::here(
     "~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
-    "survival_benchmark", "data", "splits", "TCGA", paste0(cancer, "_test_splits.csv")
+    "survival_benchmark", "data", "splits", "ICGC", paste0(cancer, "_test_splits.csv")
   )))
   grid <- benchmark_grid(
     tmp, learners, ResamplingCustom$new()$instantiate(tmp, train_splits, test_splits)
@@ -177,7 +176,7 @@ for (cancer in c("BRCA")) {
   saveRDS(
     bmr,
     here::here(
-      here::here("data", "results", "TCGA", paste0(cancer, "_results_prioritylasso_fixed.rds"))
+      here::here("data", "results", "ICGC", paste0(cancer, "_results_prioritylasso_favoring_emergency.rds"))
     )
   )
 }

@@ -31,44 +31,35 @@ python -m venv venv
 pip install -e .
 ```
 
-Afterward, run the following bash script:
+
+
+Afterward, run the following bash script to reproduce all of our results:
 
 ```
 bash reproduce.sh
 ```
 
-which reproduces:
+Also, you may repeat our preprocessing by running:
 
-- All statistical models for the standard setting
-- All neural models for the standard setting
-- Mean pooling neural model for the missing and pan-cancer setting
+```
+bash preprocess.sh
+```
 
-In addition, you can also reproduce the following additional results by appending the respective keyword arguments to the reproduce bash call:
+Please note that 
 
-- Results for favoring statistical models: `bash reproduce.sh favor`
-- Results for statistical and neural models with only multi-omics data (i.e., without clinical data): `bash reproduce.sh no_clinical`
-- Results for statistical and neural models with only clinical data and gene expression: `bash reproduce.sh clinical_gex`
-- Results for statistical and neural models with only gene expression: `bash reproduce.sh gex`
-
-To reproduce all results, you may run `bash reproduce.sh all`. All reproduced results will be written to a newly created `results_reproduced` which will have the following structure (similar to our own results, obtainable from the links above):
+All reproduced results will be written to a newly created `results_reproduced` which will have the following structure (similar to our own results, obtainable from the links above):
 
 ```
 survival_benchmark
 └───results_reproduced
-    │   survival_functions
-    └────TCGA
-    │    └───BLCA
-    │        └───BlockForest
-    │            └───split_1.csv
-    │            ...
-    │        ...
-    │    ...
-    │    metrics
-    └────TCGA
-    │    └───BLCA
-    │        └───BlockForest
-    │            └───metrics.csv
-    ...
+       survival_functions
+        └────TCGA
+            └───BLCA
+                └───BlockForest
+                    └───split_1.csv
+                ...
+            ...
+        ...
 ```
 
 Please refer to our full results to get a better idea of what the resulting data will look like. Please also note that all "raw" output files generated during the benchmark (e.g., `.rds` from `R` used for storing intermediate results) will be cleaned up by this command and you will "only" be left with the folder detailed above.

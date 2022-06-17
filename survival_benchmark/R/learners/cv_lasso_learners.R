@@ -49,6 +49,7 @@ LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
     .train = function(task) {
       library(splitTools)
       library(mlr3misc)
+      library(coefplot)
       source(here::here("survival_benchmark", "R", "utils", "utils.R"))
       data <- as_numeric_matrix(task$data(cols = task$feature_names))
       target <- task$truth()

@@ -60,9 +60,9 @@ LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
         foldid = foldids_formatted, blocks = blocks,
         type.measure = "deviance"
       )
-      
 
-      cox_helper <- transform_cox_model(prioritylasso_fit$coefficients[which(prioritylasso_fit$coefficients != 0)], data, target)
+
+      cox_helper <- transform_cox_model(prioritylasso_fit$coefficients[which(prioritylasso_fit$coefficients != 0)], data[, sapply(names(prioritylasso_fit$coefficients[which(prioritylasso_fit$coefficients != 0)]), function(x) which(colnames(data) == x))], target)
       cox_helper
     },
     .predict = function(task) {
