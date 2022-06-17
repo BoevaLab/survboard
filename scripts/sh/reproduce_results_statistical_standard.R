@@ -2,5 +2,3 @@
 
 Rscript ../R/benchmark_all.R
 Rscript ../R/benchmark_clinical_all.R
-Rscript ../R/benchmark_modality_experiments.R
-
