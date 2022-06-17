@@ -397,10 +397,6 @@ def main(
             num_batches_train = (int((len(X_train) * 0.8) * 0.9)) / params.get(
                 "batch_size"
             )
-            num_batches_train = (np.round(len(X_train) * 0.9)) / params.get(
-                "batch_size"
-            )
-            num_batches_train = (np.round(len(X_train) * 0.9)) / params.get("batch_size")
             droplast_train = (
                 True
                 if (num_batches_train - np.floor(num_batches_train))
@@ -587,7 +583,6 @@ def main(
                 ) as f:
                     json.dump(grid.best_estimator_.history, f)
             except Exception as e:
-                raise (e)
                 logger.info(e)
                 logger.info(
                     "Error encountered - replacing failing iteration with Kaplan-Meier estimate."

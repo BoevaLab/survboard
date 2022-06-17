@@ -402,9 +402,6 @@ def main(
             num_batches_train = (int((len(X_train) * 0.8) * 0.9)) / params.get(
                 "batch_size"
             )
-            num_batches_train = (np.round(len(X_train) * 0.9)) / params.get(
-                "batch_size"
-            )
             droplast_train = (
                 True
                 if (num_batches_train - np.floor(num_batches_train))
