@@ -487,8 +487,6 @@ def main(
                 cv=cv,
             )
             try:
-                X_train = X_train[[i for i in X_train.columns if i.rsplit("|")[0] != "clinical"]]
-                X_test = X_test[[i for i in X_test.columns if i.rsplit("|")[0] != "clinical"]]
                 grid.fit(
                     X_train.to_numpy().astype(np.float32),
                     y_train.astype(str),
