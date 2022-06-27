@@ -2,7 +2,7 @@
 This Github repository contains documentation, resources, links, and code for our manuscript "SurvBoard: Standardised Benchmarking for Multi-omics Cancer Survival Models".
 
 ## Summary
-SurvBoard is a benchmark focused on evaluating multi-omics survival methods. Although in principle other methods (e.g., models predicting survival only from gene expression data) can be applied to SurvBoard, our primary focus was models that incorporate multi-omics data in conjunction with clinical variables. Thus, our web service currently only enables submission for multi-omics methods, but we are working on extending SurvBoard also to single-omics and other methods using arbitrary omics information. 
+SurvBoard is a benchmark focused on evaluating multi-omics survival methods. Although in principle other methods (e.g., models predicting survival only from gene expression data) can be applied to SurvBoard, our primary focus was on models that incorporate multi-omics data in conjunction with clinical variables. Thus, our web service currently only enables submission for multi-omics methods, but we are working on extending SurvBoard also to single-omics and other methods using arbitrary omics information. 
 
 For more information, please find links and a reproduction guide below. You may also refer to our paper for further details on all aspects of our work.
 
@@ -12,7 +12,7 @@ Paper - Our manuscript is still under review.
 
 [Web service](https://survboard.vercel.app/)
 
-[Data, splits, and benchmark results (both metrics and full survival functions for all splits)](https://ibm.ent.box.com/v/survboard-meta)
+[Data, splits, and benchmark results (metrics and full survival functions for all splits)](https://ibm.ent.box.com/v/survboard-meta)
 
 ### Reproduction guide
 To reproduce our results, first install the needed `R` and `python` packages:
@@ -28,7 +28,7 @@ and
 
 ```
 python -m venv venv
-pip install -e .
+pip install -e . # -e signifies installation in "editable" mode. Remove for normal installation.
 ```
 
 Afterward, you may repeat our preprocessing by running:
@@ -38,7 +38,7 @@ Afterward, you may repeat our preprocessing by running:
 bash scripts/sh/reproduce_preprocessing.sh
 ```
 
-When rerunning preprocessing, files will be written to the `data_reproduced` folder. We require certain raw data files which can be obtained from the official TCGA/ICGC/TARGET websites or from [cBioPortal](https://www.cbioportal.org/). We expect raw data files in the `data_template` folder, within their requisite project subfolder. Please see the respective preprocessing scripts for more details on file names, or contact us if you run into any issues.
+When re-running preprocessing, files will be written to the `data_reproduced` folder. We require certain raw data files which can be obtained from the official TCGA/ICGC/TARGET websites or from [cBioPortal](https://www.cbioportal.org/). We expect raw data files in the `data_template` folder, within their requisite project subfolder. Please see the respective preprocessing scripts for more details on file names, or contact us if you run into any issues.
 
 Our results may be reproduced by running requisite bash scripts in the `scripts/sh` folder. For example,
 
