@@ -15,13 +15,21 @@ choose_proper_sample <- function(barcodes) {
   }
 }
 
-filter_samples <- function(df) {
+filter_samples <- function(df, keep_non_primary_samples = FALSE) {
   types <- substr(colnames(df), 14, 15)
   # Select only primary tumors
   # 01 - Primary Solid Tumor
   # 03 - Primary Blood Derived Cancer - Peripheral Blood
   # 09 - Primary Blood Derived Cancer - Bone Marrow
-  df <- df[, types %in% c("01", "03", "09")]
+
+  # 04 - Recurrent Blood Derived Cancer - Bone Marrow	TRBM
+  # 06 - Metastatic	TM
+  if (keep_non_primary_samples) {
+    selected_types <- c("01", "03", "09", "04", "06")
+  } else {
+    selected_types <- c("01", "03", "09")
+  }
+  df <- df[, types %in% selected_types]
   donors <- substr(colnames(df), 1, 12)
   duplicated_donors <- names(which(table(donors) > 1))
   if (length(duplicated_donors) > 0) {
@@ -54,9 +62,9 @@ impute <- function(df) {
   return(df)
 }
 
-preprocess <- function(df, log = FALSE) {
+preprocess <- function(df, log = FALSE, keep_non_primary_samples = FALSE) {
   if (all(nchar(colnames(df)) >= 15)) {
-    df <- filter_samples(df)
+    df <- filter_samples(df, keep_non_primary_samples = keep_non_primary_samples)
   }
   if (any(is.na(df))) {
     df <- impute(df)
@@ -67,20 +75,23 @@ preprocess <- function(df, log = FALSE) {
   return(df)
 }
 
-prepare_gene_expression_pancan <- function(gex) {
+prepare_gene_expression_pancan <- function(gex, keep_non_primary_samples = FALSE) {
   rownames(gex) <- gex[, 1]
   gex <- gex[, 2:ncol(gex)]
-  gex <- preprocess(gex, log = TRUE)
+  gex <- preprocess(gex, log = TRUE, keep_non_primary_samples = keep_non_primary_samples)
   return(gex)
 }
 
-prepare_clinical_data <- function(clinical_raw, clinical_ext_raw, cancer, standard = TRUE) {
-  clinical <- clinical_raw %>%
+prepare_clinical_data <- function(clinical_raw, clinical_ext_raw, cancer, keep_patients_without_survival_information = FALSE) {
+  if (!keep_patients_without_survival_information) {
+    clinical <- clinical_raw %>%
+      # remove any patients for which the OS endpoint is missing
+      filter(!(is.na(OS) | is.na(OS.time))) %>%
+      # remove any patients which were not at risk at the start of the study
+      filter(!(OS.time == 0))
+  }
+  clinical <- clinical %>%
     filter(type == cancer) %>%
-    # remove any patients for which the OS endpoint is missing
-    filter(!(is.na(OS) | is.na(OS.time))) %>%
-    # remove any patients which were not at risk at the start of the study
-    filter(!(OS.time == 0)) %>%
     dplyr::select(
       bcr_patient_barcode, OS, OS.time,
       age_at_initial_pathologic_diagnosis,
@@ -107,36 +118,36 @@ prepare_clinical_data <- function(clinical_raw, clinical_ext_raw, cancer, standa
   return(clinical)
 }
 
-prepare_cnv <- function(cnv) {
+prepare_cnv <- function(cnv, keep_non_primary_samples = FALSE) {
   rownames(cnv) <- cnv[, 1]
   cnv <- cnv[, 2:ncol(cnv)]
-  cnv <- preprocess(cnv, log = FALSE)
+  cnv <- preprocess(cnv, log = FALSE, keep_non_primary_samples = keep_non_primary_samples)
   cnv
 }
 
-prepare_meth_pancan <- function(meth) {
+prepare_meth_pancan <- function(meth, keep_non_primary_samples = FALSE) {
   rownames(meth) <- meth[, 1]
   meth <- meth[, 2:ncol(meth)]
-  meth <- preprocess(meth, log = FALSE)
+  meth <- preprocess(meth, log = FALSE, keep_non_primary_samples = keep_non_primary_samples)
   meth
 }
 
-prepare_mutation <- function(mut) {
-  mut <- preprocess(mut, log = FALSE)
+prepare_mutation <- function(mut, keep_non_primary_samples = FALSE) {
+  mut <- preprocess(mut, log = FALSE, keep_non_primary_samples = keep_non_primary_samples)
   mut
 }
 
-prepare_rppa_pancan <- function(rppa, duplicates = "keep") {
+prepare_rppa_pancan <- function(rppa, keep_non_primary_samples = FALSE) {
   rownames(rppa) <- rppa[, 1]
   rppa <- t(rppa[, 2:ncol(rppa)])
-  rppa <- preprocess(rppa, log = FALSE)
+  rppa <- preprocess(rppa, log = FALSE, keep_non_primary_samples = keep_non_primary_samples)
   rppa
 }
 
-prepare_mirna_pancan <- function(mirna, duplicates = "keep", logbase = 2, offset = 2) {
+prepare_mirna_pancan <- function(mirna, keep_non_primary_samples = FALSE) {
   rownames(mirna) <- mirna[, 1]
   mirna <- mirna[, 2:ncol(mirna)]
-  mrina <- preprocess(mirna, log = TRUE)
+  mrina <- preprocess(mirna, log = TRUE, keep_non_primary_samples = keep_non_primary_samples)
 }
 
 append_missing_modality_samples <- function(df, barcodes) {
@@ -149,18 +160,18 @@ append_missing_modality_samples <- function(df, barcodes) {
   return(df)
 }
 
-prepare_new_cancer_dataset <- function(cancer, include_rppa = FALSE, include_mirna = TRUE, include_mutation = TRUE, include_methylation = TRUE, standard_clinical = TRUE, include_gex = TRUE, include_cnv = TRUE) {
+prepare_new_cancer_dataset <- function(cancer, include_rppa = FALSE, include_mirna = TRUE, include_mutation = TRUE, include_methylation = TRUE, include_gex = TRUE, include_cnv = TRUE, keep_non_primary_samples = FALSE, keep_patients_without_survival_information = FALSE) {
   config <- rjson::fromJSON(
     file = here::here("config", "config.json")
   )
   tcga_cdr_master <- tcga_cdr
   tcga_w_followup_master <- tcga_w_followup
-  clinical <- prepare_clinical_data(tcga_cdr_master, tcga_w_followup_master, cancer = cancer, standard = TRUE)
+  clinical <- prepare_clinical_data(tcga_cdr_master, tcga_w_followup_master, cancer = cancer, keep_patients_without_survival_information = keep_patients_without_survival_information)
   sample_barcodes <- list(clinical$patient_id)
   if (include_gex) {
     patients <- unname(unlist(sapply(clinical$patient_id, function(x) grep(x, colnames(gex_master)))))
     gex_filtered <- gex_master[, c(1, patients)]
-    gex <- prepare_gene_expression_pancan(gex_filtered)
+    gex <- prepare_gene_expression_pancan(gex_filtered, keep_non_primary_samples = keep_non_primary_samples)
     sample_barcodes <- append(sample_barcodes, list(colnames(gex)))
     gex <- append_missing_modality_samples(gex, clinical$patient_id)
   }
@@ -168,7 +179,7 @@ prepare_new_cancer_dataset <- function(cancer, include_rppa = FALSE, include_mir
   if (include_cnv) {
     patients <- unname(unlist(sapply(clinical$patient_id, function(x) grep(x, colnames(cnv_master)))))
     cnv_filtered <- cnv_master[, c(1, patients)]
-    cnv <- prepare_cnv(cnv_filtered)
+    cnv <- prepare_cnv(cnv_filtered, keep_non_primary_samples = keep_non_primary_samples)
     sample_barcodes <- append(sample_barcodes, list(colnames(cnv)))
     cnv <- append_missing_modality_samples(cnv, clinical$patient_id)
   }
@@ -195,7 +206,7 @@ prepare_new_cancer_dataset <- function(cancer, include_rppa = FALSE, include_mir
     patients <- unname(unlist(sapply(clinical$patient_id, function(x) grep(x, colnames(mirna_master)))))
     if (length(patients) > 0) {
       mirna_filtered <- mirna_master[, c(1, patients)]
-      mirna <- prepare_mirna_pancan(data.frame(mirna_filtered, check.names = FALSE))
+      mirna <- prepare_mirna_pancan(data.frame(mirna_filtered, check.names = FALSE), keep_non_primary_samples = keep_non_primary_samples)
       sample_barcodes <- append(sample_barcodes, list(colnames(mirna)))
       mirna <- append_missing_modality_samples(mirna, clinical$patient_id)
     } else {
@@ -205,7 +216,7 @@ prepare_new_cancer_dataset <- function(cancer, include_rppa = FALSE, include_mir
   if (include_mutation) {
     patients <- unname(unlist(sapply(clinical$patient_id, function(x) grep(x, colnames(mut_master)))))
     mut_filtered <- mut_master[, patients]
-    mutation <- prepare_mutation(mut_filtered)
+    mutation <- prepare_mutation(mut_filtered, keep_non_primary_samples = keep_non_primary_samples)
     sample_barcodes <- append(sample_barcodes, list(colnames(mutation)))
     mutation <- append_missing_modality_samples(mutation, clinical$patient_id)
   }

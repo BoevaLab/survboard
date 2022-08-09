@@ -145,7 +145,7 @@ prepare_gex_icgc <- function(gex, type = "seq", log = TRUE) {
   return(gex)
 }
 
-prepare_icgc <- function(cancer) {
+prepare_icgc <- function(cancer, keep_non_primary_samples = FALSE, keep_patients_without_survival_information = FALSE) {
   config <- rjson::fromJSON(
     file = here::here("config", "config.json")
   )
@@ -179,8 +179,12 @@ prepare_icgc <- function(cancer) {
       OS,
       OS_days,
       gender, age, tumor_stage, cancer_history_relative
-    ) %>%
-    filter(!is.na(OS) & !is.na(OS_days) & !is.na(age) & !is.na(icgc_donor_id)) %>%
+    )
+  if (!keep_patients_without_survival_information) {
+    donor <- donor %>% filter(!is.na(OS) & !is.na(OS_days))
+  }
+  donor <- donor %>%
+    filter(!is.na(age) & !is.na(icgc_donor_id)) %>%
     mutate(cancer_history_relative = recode(cancer_history_relative, `unknown` = "NA"))
 
   if (config$exposure[[cancer]]) {
@@ -221,8 +225,13 @@ prepare_icgc <- function(cancer) {
     gex <- gex %>%
       mutate(submitted_sample_id = as.character(submitted_sample_id)) %>%
       left_join(sample) %>%
-      left_join(specimen, by = c(c("project_code", "icgc_specimen_id", "submitted_specimen_id", "icgc_donor_id", "submitted_donor_id"))) %>%
-      filter(grepl("Primary", specimen_type))
+      left_join(specimen, by = c(c("project_code", "icgc_specimen_id", "submitted_specimen_id", "icgc_donor_id", "submitted_donor_id")))
+    if (keep_non_primary_samples) {
+      gex <- gex %>% filter(grepl("(Primary|Recurrent)", specimen_type))
+    } else {
+      gex <- gex %>% filter(grepl("Primary", specimen_type))
+    }
+
     gex <- prepare_gex_icgc(gex, config$gex_type[[cancer]], config$gex_log[[cancer]])
     common_samples <- append(common_samples, list(rownames(gex)))
     gex <- add_missing_modality_samples_icgc(gex, donor$icgc_donor_id)
@@ -238,8 +247,12 @@ prepare_icgc <- function(cancer) {
     mut <- data.frame(t(mutCountMatrix(mut, removeNonMutated = FALSE)), check.names = FALSE) %>%
       rownames_to_column("icgc_sample_id") %>%
       left_join(sample) %>%
-      left_join(specimen, by = c(c("project_code", "icgc_specimen_id", "submitted_specimen_id", "icgc_donor_id", "submitted_donor_id"))) %>%
-      filter(grepl("Primary", specimen_type))
+      left_join(specimen, by = c(c("project_code", "icgc_specimen_id", "submitted_specimen_id", "icgc_donor_id", "submitted_donor_id")))
+    if (keep_non_primary_samples) {
+      mut <- mut %>% filter(grepl("(Primary|Recurrent)", specimen_type))
+    } else {
+      mut <- mut %>% filter(grepl("Primary", specimen_type))
+    }
     mut <- prepare_mutation_icgc(mut)
     common_samples <- append(common_samples, list(rownames(mut)))
     mut <- add_missing_modality_samples_icgc(mut, donor$icgc_donor_id)

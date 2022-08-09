@@ -182,7 +182,6 @@ get_survival_prediction_linear_cox <- function(train_target, train_data, coeffic
 }
 
 get_prioritylasso_block_order <- function(target, data, blocks, foldid, lambda.type, favor_clinical) {
-  browser()
   library(glmnet)
   library(coefplot)
   mean_absolute_coefficients <- c()

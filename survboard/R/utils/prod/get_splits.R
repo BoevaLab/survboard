@@ -33,7 +33,7 @@ get_splits <- function(cancer,
                        setting = "standard") {
   library(here)
   library(rjson)
-  source(here::here("survboard", "R", "prod", "utils", "utils.R"))
+  source(here::here("survboard", "R", "utils", "prod", "utils.R"))
   config <- rjson::fromJSON(
     file = here::here("config", "config.json")
   )
@@ -52,14 +52,15 @@ get_splits <- function(cancer,
     )))[[split_number]]
     test_splits <- format_splits(readr::read_csv(here::here(
       "data", "splits", "TCGA", "pancancer_test_splits.csv"
-    )))[split_number]
+    )))[[split_number]]
+    train_splits <- c(train_splits, (max(max(train_splits), max(test_splits)) + 1):n_samples)
   } else if (setting == "missing") {
     train_splits <- format_splits(readr::read_csv(here::here(
       "data", "splits", "TCGA", paste0(cancer, "_train_splits.csv")
     )))[[split_number]]
     test_splits <- format_splits(readr::read_csv(here::here(
       "data", "splits", "TCGA", paste0(cancer, "_test_splits.csv")
-    )))[split_number]
+    )))[[split_number]]
     train_splits <- c(train_splits, (max(max(train_splits), max(test_splits)) + 1):n_samples)
   } else {
     train_splits <- format_splits(readr::read_csv(here::here(
@@ -67,7 +68,7 @@ get_splits <- function(cancer,
     )))[[split_number]]
     test_splits <- format_splits(readr::read_csv(here::here(
       "data", "splits", "TCGA", paste0(cancer, "_test_splits.csv")
-    )))[split_number]
+    )))[[split_number]]
   }
-  return(list(train_splits, test_splits))
+  return(list(train_ix = train_splits, test_ix = test_splits))
 }
