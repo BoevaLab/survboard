@@ -1,9 +1,16 @@
-library(ranger)
-library(mlr3proba)
-library(mlr3tuningspaces)
-library(mlr3misc)
+suppressPackageStartupMessages({
+  library(ranger)
+  library(mlr3proba)
+  library(mlr3tuningspaces)
+  library(mlr3misc)
+})
 
 # Adapted from: https://github.com/mlr-org/mlr3learners/blob/HEAD/R/LearnerSurvRanger.R
+
+#' Fits a ranger method using `mlr3` and `mlr3proba`. Identical to `LearnerSurvRanger`
+#' but with the option to favor (i.e., mandatorily consider) clinical variables.
+#' For full documentation of all parameters please also refer to the documentation
+#' of `LearnerSurvRanger` and `ranger::ranger`.
 LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
   inherit = mlr3proba::LearnerSurv,
   public = list(
@@ -70,7 +77,9 @@ LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
   ),
   private = list(
     .train = function(task) {
-      source(here::here("survboard", "R", "utils", "utils.R"))
+      suppressPackageStartupMessages({
+        source(here::here("survboard", "R", "utils", "imports.R"))
+      })
       pv <- self$param_set$get_values(tags = "train")
       pv <- convert_ratio(pv, "mtry", "mtry.ratio", length(task$feature_names))
       targets <- task$target_names
@@ -90,7 +99,9 @@ LearnerSurvRangerCustom <- R6Class("LearnerSurvRangerCustom",
       )
     },
     .predict = function(task) {
-      source(here::here("survboard", "R", "utils", "utils.R"))
+      suppressPackageStartupMessages({
+        source(here::here("survboard", "R", "utils", "imports.R"))
+      })
       pv <- self$param_set$get_values(tags = "predict")
       newdata <- ordered_features(task, self)
 

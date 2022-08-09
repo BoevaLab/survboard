@@ -1,3 +1,40 @@
+#' Get stratified cross-validation indices.
+#'
+#' @param event integer. Vector containing event indicator to be stratified on.
+#' @param n_folds integer. How many folds should be used within the CV.
+#' @param n_samples integer. How many samples are within the set to be used CV on.
+#'
+#' @returns foldids_formatted. Integer. Vector containing the assignment of
+#'                                      each sample to its respective CV fold.
+get_folds <- function(event, n_folds, n_samples) {
+  # Load package within function for parallelisation.
+  suppressPackageStartupMessages(library(splitTools))
+  foldids <- create_folds(target, k = n_folds, invert = TRUE, type = "stratified")
+  foldids_formatted <- rep(1, n_samples)
+  for (i in 2:length(foldids)) {
+    foldids_formatted[foldids[[i]]] <- i
+  }
+  return(foldids_formatted)
+}
+
+
+#' Gets indices of blocks for usage with multi-modal models.
+#'
+#' @param block_order character. Vector containing the (unique) vector of modality names.
+#' @param feature_names data.frame. Complete data.frame of the training data.
+#'
+#' @returns blocks character. Vector containing a mapping from feature to
+#'                            which modality it belongs, prefaced with "bp".
+#' @example
+#' get_block_assignment(c("apple", "pear"), c("apple_feature_1", "pear_feature_1", "apple_feature_2")).
+#' Returns: c("bp1", "bp2", "bp1").
+get_block_assignment <- function(block_order, feature_names) {
+  blocks <- sapply(block_order, function(x) grep(x, feature_names))
+  blocks <- blocks[sapply(blocks, length) > 1]
+  names(blocks) <- paste0("bp", 1:length(blocks))
+  return(blocks)
+}
+
 #' Transforms coefficients of a Coxian-based model into a Cox model
 #' that can be used to produce survival function estimates.
 #' Inspired by the implementation of Herrman et al. (2021).
@@ -26,7 +63,7 @@ transform_cox_model <- function(coefficients, data, target) {
 }
 
 #' Calculate priority order based on an adaptive step as described in
-#' Herrman et al. (2021). Concretely, we fit a Ridge on each modality 
+#' Herrman et al. (2021). Concretely, we fit a Ridge on each modality
 #' individually and then order the modalities based on their mean
 #' absolute coefficients of the first step.
 #'
@@ -35,7 +72,7 @@ transform_cox_model <- function(coefficients, data, target) {
 #' @param blocks character. Vector containing unique names of each modality name.
 #' @param foldid numeric. Vector containing the fold assignments for reproducibility.
 #' @param lambda.type character. Whether to use the `lambda.min` or `lambda.1se` rule from `glmnet`.
-#' @param favor_clinical logical. Whether clinical should be favored by 
+#' @param favor_clinical logical. Whether clinical should be favored by
 #'                                always giving it the highest priority.
 #'
 #' @returns block_order character. Reordered `blocks` vector, where

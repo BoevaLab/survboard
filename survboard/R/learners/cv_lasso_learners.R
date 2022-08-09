@@ -1,9 +1,15 @@
-library(R6)
-library(mlr3)
-library(mlr3proba)
-library(mlr3tuningspaces)
+suppressPackageStartupMessages({
+  library(R6)
+  library(mlr3)
+  library(mlr3proba)
+  library(mlr3tuningspaces)
+})
 
 # Adapted from: https://github.com/mlr-org/mlr3extralearners/blob/main/R/learner_glmnet_surv_cv_glmnet.R
+
+#' Fits cv.glmnet using `mlr3` and `mlr3proba`. Identical to `LearnerSurvCVGlmnet`
+#' but using stratified CV internally and the option to favor clinical variables. Refer to `LearnerSurvCVGlmnet`
+#' and `cv.glmnet` for detailed documentation.
 LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
   inherit = mlr3proba::LearnerSurv,
   public = list(
@@ -26,20 +32,24 @@ LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
   ),
   private = list(
     .train = function(task) {
-      library(splitTools)
+      suppressPackageStartupMessages({
+        library(mlr3misc)
+        library(coefplot)
+        source(here::here("survboard", "R", "utils", "utils.R"))
+        source(here::here("survboard", "R", "utils", "imports.R"))
+      })
+
       data <- as_numeric_matrix(task$data(cols = task$feature_names))
       target <- task$truth()
       pv <- self$param_set$get_values(tags = "train")
-      foldids <- create_folds(target[, 2], k = pv$nfolds, invert = TRUE, type = "stratified")
-      foldids_formatted <- rep(1, nrow(data))
-      for (i in 2:length(foldids)) {
-        foldids_formatted[foldids[[i]]] <- i
-      }
-
+      foldids_formatted <- get_folds(target[, 2], pv$nfolds, nrow(data))
       pv$foldid <- foldids_formatted
       pv <- pv[-which(names(pv) == "nfolds")]
       pv$family <- "cox"
       penalty.factor <- rep(1, length(task$feature_names))
+
+      # Favor clinical variables by setting their penalty factors to zero.
+      # Unused by us in practice.
       if (pv$favor_clinical) {
         penalty.factor[which(sapply(strsplit(task$feature_names, "\\_"), function(x) x[[1]]) == "clinical")] <- 0
         pv <- pv[-which(names(pv) == "favor_clinical")]
@@ -50,23 +60,28 @@ LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
         data, target,
         .args = pv
       )
-      tmp <- extract.coef(glmnet_fit)
+      tmp <- coefplot::extract.coef(glmnet_fit)
       coefficients <- tmp[, 1]
       names(coefficients) <- rownames(tmp)
       cox_helper <- transform_cox_model(coefficients, data, target)
-      cox_helper
+      return(cox_helper)
     },
     .predict = function(task) {
-      source(here::here("survboard", "R", "utils", "utils.R"))
+      suppressPackageStartupMessages({
+        source(here::here("survboard", "R", "utils", "utils.R"))
+        source(here::here("survboard", "R", "utils", "imports.R"))
+        library(pec)
+        library(mlr3proba)
+      })
       newdata <- as_numeric_matrix(ordered_features(task, self))
-      newdata <- data.frame(newdata)[, colnames(newdata) %in% names(self$model$coefficients)]
+      newdata <- data.frame(newdata)[, colnames(newdata) %in% names(self$model$coefficients), drop = FALSE]
       surv <- pec::predictSurvProb(self$model, newdata, self$model$y[, 1])
       lp <- predict(self$model, newdata)
-      mlr3proba::.surv_return(
+      return(mlr3proba::.surv_return(
         times = self$model$y[, 1],
         surv = surv,
         lp = lp
-      )
+      ))
     }
   )
 )

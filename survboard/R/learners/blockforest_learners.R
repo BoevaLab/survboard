@@ -1,8 +1,14 @@
-library(mlr3)
-library(mlr3proba)
-library(R6)
+suppressPackageStartupMessages({
+  library(mlr3)
+  library(mlr3proba)
+  library(R6)
+})
 
 # Adapted from: https://github.com/mlr-org/mlr3learners/blob/HEAD/R/LearnerSurvRanger.R
+
+#' Fits a BlockForest method using `mlr3` and `mlr3proba`.
+#' For full documentation of all parameters please refer to the documentation
+#' of `BlockForest::blockfor`.
 LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
   inherit = mlr3proba::LearnerSurv,
   public = list(
@@ -38,38 +44,44 @@ LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
   ),
   private = list(
     .train = function(task) {
-      library(blockForest)
-      library(survival)
+      suppressPackageStartupMessages({
+        library(blockForest)
+        library(survival)
+        library(here)
+        source(here::here("survboard", "R", "utils.R"))
+      })
+
       pv <- self$param_set$get_values(tags = "train")
-      block_order <- c(
-        "clinical",
-        "gex",
-        "cnv",
-        "rppa",
-        "mirna",
-        "mut",
-        "meth"
+      # Get indices of different modalities for usage during BlockForest.
+      blocks <- get_block_assignment(
+        c(
+          "clinical",
+          "gex",
+          "cnv",
+          "rppa",
+          "mirna",
+          "mut",
+          "meth"
+        ),
+        task$feature_names
       )
-      blocks <- sapply(block_order, function(x) grep(x, task$feature_names))
-      blocks <- blocks[sapply(blocks, length) > 1]
-      names(blocks) <- paste0("bp", 1:length(blocks))
-      mlr3misc::invoke(
+      return(mlr3misc::invoke(
         blockForest::blockfor,
         X = task$data(cols = task$feature_names),
         y = task$truth(),
         blocks = blocks,
-        # We force `num.threads = 1` to prevent 
+        # We force `num.threads = 1` to prevent
         # multi-threading during training, since
         # we only parallelize outer cross-validation
         # folds for statistical models.
         num.threads = 1,
         .args = pv
-      )
+      ))
     },
     .predict = function(task) {
       pv <- self$param_set$get_values(tags = "predict")
       prediction <- mlr3misc::invoke(predict, self$model$forest, data = task$data(cols = task$feature_names), .args = pv)
-      mlr3proba::.surv_return(times = prediction$unique.death.times, surv = prediction$survival)
+      return(mlr3proba::.surv_return(times = prediction$unique.death.times, surv = prediction$survival))
     }
   )
 )

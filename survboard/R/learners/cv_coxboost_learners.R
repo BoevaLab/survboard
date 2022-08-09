@@ -1,8 +1,14 @@
-library(mlr3)
-library(mlr3proba)
-library(R6)
+suppressPackageStartupMessages({
+  library(mlr3)
+  library(mlr3proba)
+  library(R6)
+})
 
 # Adapted from: https://github.com/mlr-org/mlr3extralearners/blob/main/R/learner_CoxBoost_surv_cv_coxboost.R
+
+#' Fits CoxBoost using `mlr3` and `mlr3proba`. Identical to `LearnerSurvCVCoxboost`
+#' but using stratified CV internally. Refer to `LearnerSurvCVCoxboost`
+#' and `CoxBoost` for detailed documentation.
 LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
   inherit = mlr3proba::LearnerSurv,
   public = list(
@@ -41,9 +47,13 @@ LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
   ),
   private = list(
     .train = function(task) {
-      source(here::here("survboard", "R", "utils", "utils.R"))
-      library(withr)
-      library(splitTools)
+      suppressPackageStartupMessages({
+        source(here::here("survboard", "R", "utils", "utils.R"))
+        source(here::here("survboard", "R", "utils", "imports.R"))
+        library(withr)
+        library(splitTools)
+      })
+
       self$state$feature_names <- task$feature_names
       pars <- self$param_set$get_values(tags = "train")
 
@@ -66,6 +76,7 @@ LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
       tn <- task$target_names
       time <- data[[tn[1L]]]
       status <- data[[tn[2L]]]
+      # Create foldids for reproducibility using stratification on the event.
       foldids <- create_folds(status, k = nfolds, invert = TRUE, type = "stratified")
       cv_pars[["folds"]] <- foldids
       data <- as.matrix(data[, !tn, with = FALSE])
@@ -122,7 +133,10 @@ LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
       })
     },
     .predict = function(task) {
-      source(here::here("survboard", "R", "utils", "utils.R"))
+      suppressPackageStartupMessages({
+        source(here::here("survboard", "R", "utils", "utils.R"))
+        source(here::here("survboard", "R", "utils", "imports.R"))
+      })
       pars <- self$param_set$get_values(tags = "predict")
       newdata <- as.matrix(task$data(cols = self$state$feature_names))
       lp <- as.numeric(mlr3misc::invoke(predict,
@@ -140,11 +154,11 @@ LearnerSurvCVCoxboostCustom <- R6Class("LearnerSurvCVCoxboostCustom",
         times = sort(unique(self$model$time))
       )
 
-      mlr3proba::.surv_return(
+      return(mlr3proba::.surv_return(
         times = sort(unique(self$model$time)),
         surv = surv,
         lp = lp
-      )
+      ))
     }
   )
 )
