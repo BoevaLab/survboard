@@ -1,32 +1,31 @@
-library(mlr3)
-library(mlr3pipelines)
-library(mlr3learners)
-library(mlr3tuning)
-library(paradox)
-library(mlr3proba)
-library(rjson)
-library(dplyr)
+suppressPackageStartupMessages({
+  library(mlr3)
+  library(mlr3pipelines)
+  library(mlr3learners)
+  library(mlr3tuning)
+  library(paradox)
+  library(mlr3proba)
+  library(rjson)
+  library(dplyr)
+})
+
+# Set up parallelisation option.
 future::plan("multisession")
 options(future.globals.onReference = "ignore")
+
 config <- rjson::fromJSON(
   file = here::here("config", "config.json")
 )
 
+# Set up mlr3 pipelines.
 remove_constants <- po("removeconstants")
 encode <- po("encode", method = "treatment")
 fix_factors <- po("fixfactors")
-impute_missing_prediction <- po("imputeoor", affect_columns = selector_type("factor"))
-remove_column_missing_train_factor <- po("select", selector = selector_invert(selector_grep("DROPME")))
 impute <- po("imputeconstant", constant = 0, affect_columns = selector_grep("clinical"))
-
-
 pipe <- remove_constants %>>% fix_factors
 pipe_ohe <- pipe %>>% encode %>>% impute
-source(here::here("survboard", "R", "learners", "blockforest_learners.R"))
-source(here::here("survboard", "R", "learners", "cv_coxboost_learners.R"))
-source(here::here("survboard", "R", "learners", "cv_lasso_learners.R"))
-source(here::here("survboard", "R", "learners", "cv_prioritylasso_learners.R"))
-source(here::here("survboard", "R", "learners", "ranger_learners.R"))
+
+# Seeding for reproducibility.
 set.seed(42)
 
 model_names <- c(
@@ -40,166 +39,69 @@ learners <- list(
   )
 )
 
-format_splits <- function(raw_splits) {
-  if (any(is.na(raw_splits))) {
-    apply(data.frame(raw_splits), 1, function(x) unname(x[!is.na(x)]) + 1)
-  } else {
-    x <- unname(as.matrix(raw_splits)) + 1
-    split(x, row(x))
-  }
-}
-
-
-for (cancer in config$tcga_cancers) {
-  data <- vroom::vroom(
-    here::here(
-      "data", "processed", "TCGA",
-      paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
+for (project in c("TCGA", "ICGC", "TARGET")) {
+  # Iterate over all cancers in the project.
+  for (cancer in config[[paste0(tolower(project))]]) {
+    # Read in complete modality sample dataset.
+    data <- vroom::vroom(
+      here::here(
+        "data", "processed", project,
+        paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
+      )
     )
-  )
-  data <- data.frame(data[, -which("patient_id" == colnames(data))]) %>%
-    mutate(across(where(is.character), as.factor)) %>%
-    mutate(across(where(is.factor), forcats::fct_explicit_na, "MISSING"))
-  data <- data[
-    ,
-    which(sapply(strsplit(colnames(data), "\\_"), function(x) x[[1]]) %in% c("clinical", "OS"))
-  ]
-  tmp <- as_task_surv(data,
-    time = "OS_days",
-    event = "OS",
-    type = "right",
-    id = cancer
-  )
-  tmp$add_strata("OS")
-  train_splits <- format_splits(readr::read_csv(here::here(
-    "data", "splits", "TCGA", paste0(cancer, "_train_splits.csv")
-  )))
-  test_splits <- format_splits(readr::read_csv(here::here(
-    "data", "splits", "TCGA", paste0(cancer, "_test_splits.csv")
-  )))
-  grid <- benchmark_grid(
-    tmp, learners, ResamplingCustom$new()$instantiate(tmp, train_splits, test_splits)
-  )
-  bmr <- benchmark(grid)
-  bmr <- bmr$score()
-  for (model in 0:length(model_names)) {
-    if (!dir.exists(here::here(
-      "data", "results_reproduced", "survival_functions", "TCGA", cancer, model_names[(model + 1)]
-    ))) {
-      dir.create(
-        here::here(
-          "data", "results_reproduced", "survival_functions", "TCGA", cancer, model_names[(model + 1)]
-        ),
-        recursive = TRUE
-      )
-    }
-    for (i in 1:25) {
-      surv_pred <- data.frame(bmr[(1 + (model * 25):((model + 1) * 25))]$prediction[[i]]$data$distr, check.names = FALSE)
-      surv_pred %>% readr::write_csv(
-        here::here(
-          "data", "results_reproduced", "survival_functions", "TCGA", cancer, model_names[(model + 1)], paste0("split_", i, ".csv")
-        )
-      )
-    }
-  }
-}
+    # Remove patient_id column and explicitly cast character columns as strings.
+    data <- data.frame(data[, -which("patient_id" == colnames(data))]) %>%
+      mutate(across(where(is.character), as.factor))
 
-for (cancer in config$tcga_cancers) {
-  data <- vroom::vroom(
-    here::here(
-      "data", "processed", "ICGC",
-      paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
-    )
-  )
-  data <- data.frame(data[, -which("patient_id" == colnames(data))]) %>%
-    mutate(across(where(is.character), as.factor)) %>%
-    mutate(across(where(is.factor), forcats::fct_explicit_na, "MISSING"))
-  tmp <- as_task_surv(data,
-    time = "OS_days",
-    event = "OS",
-    type = "right",
-    id = cancer
-  )
-  tmp$add_strata("OS")
-  train_splits <- format_splits(readr::read_csv(here::here(
-    "data", "splits", "ICGC", paste0(cancer, "_train_splits.csv")
-  )))
-  test_splits <- format_splits(readr::read_csv(here::here(
-    "data", "splits", "ICGC", paste0(cancer, "_test_splits.csv")
-  )))
-  grid <- benchmark_grid(
-    tmp, learners, ResamplingCustom$new()$instantiate(tmp, train_splits, test_splits)
-  )
-  bmr <- benchmark(grid)
-  bmr <- bmr$score()
-  for (model in 0:length(model_names)) {
-    if (!dir.exists(here::here(
-      "data", "results_reproduced", "survival_functions", "ICGC", cancer, model_names[(model + 1)]
-    ))) {
-      dir.create(
-        here::here(
-          "data", "results_reproduced", "survival_functions", "ICGC", cancer, model_names[(model + 1)]
-        ),
-        recursive = TRUE
-      )
-    }
-    for (i in 1:25) {
-      surv_pred <- data.frame(bmr[(1 + (model * 25):((model + 1) * 25))]$prediction[[i]]$data$distr, check.names = FALSE)
-      surv_pred %>% readr::write_csv(
-        here::here(
-          "data", "results_reproduced", "survival_functions", "ICGC", cancer, model_names[(model + 1)], paste0("split_", i, ".csv")
-        )
-      )
-    }
-  }
-}
+    # Keep only survival information (OS and OS_days) and clinical variables.
+    data <- data[
+      ,
+      which(sapply(strsplit(colnames(data), "\\_"), function(x) x[[1]]) %in% c("clinical", "OS"))
+    ]
 
-for (cancer in config$target_cancers) {
-  data <- vroom::vroom(
-    here::here(
-      "data", "processed", "TARGET",
-      paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
+    # Create mlr3 task dataset - our event time is indicated by `OS_days`
+    # and our event by `OS`. All our datasets are right-censored.
+    tmp <- as_task_surv(data,
+      time = "OS_days",
+      event = "OS",
+      type = "right",
+      id = cancer
     )
-  )
-  data <- data.frame(data[, -which("patient_id" == colnames(data))]) %>%
-    mutate(across(where(is.character), as.factor)) %>%
-    mutate(across(where(is.factor), forcats::fct_explicit_na, "MISSING"))
-  tmp <- as_task_surv(data,
-    time = "OS_days",
-    event = "OS",
-    type = "right",
-    id = cancer
-  )
-  tmp$add_strata("OS")
-  train_splits <- format_splits(readr::read_csv(here::here(
-    "data", "splits", "TARGET", paste0(cancer, "_train_splits.csv")
-  )))
-  test_splits <- format_splits(readr::read_csv(here::here(
-    "data", "splits", "TARGET", paste0(cancer, "_test_splits.csv")
-  )))
-  grid <- benchmark_grid(
-    tmp, learners, ResamplingCustom$new()$instantiate(tmp, train_splits, test_splits)
-  )
-  bmr <- benchmark(grid)
-  bmr <- bmr$score()
-  for (model in 0:length(model_names)) {
-    if (!dir.exists(here::here(
-      "data", "results_reproduced", "survival_functions", "TARGET", cancer, model_names[(model + 1)]
-    ))) {
-      dir.create(
-        here::here(
-          "data", "results_reproduced", "survival_functions", "TARGET", cancer, model_names[(model + 1)]
-        ),
-        recursive = TRUE
-      )
-    }
-    for (i in 1:25) {
-      surv_pred <- data.frame(bmr[(1 + (model * 25):((model + 1) * 25))]$prediction[[i]]$data$distr, check.names = FALSE)
-      surv_pred %>% readr::write_csv(
-        here::here(
-          "data", "results_reproduced", "survival_functions", "TARGET", cancer, model_names[(model + 1)], paste0("split_", i, ".csv")
+    # Add stratification on the event - this is only necessary if you
+    # use mlr3 to tune hyperparameters, but it is good to keep in for
+    # safety.
+    tmp$add_strata("OS")
+    # Iterate over `get_splits` to get full train and test splits for usage in mlr3.
+    train_splits <- lapply(1:(config$outer_repetitions * config$outer_splits), function(x) get_splits(cancer = cancer, project = project, n_samples = nrow(data), split_number = x, setting = "standard")[["train_ix"]])
+    test_splits <- lapply(1:(config$outer_repetitions * config$outer_splits), function(x) get_splits(cancer = cancer, project = project, n_samples = nrow(data), split_number = x, setting = "standard")[["test_ix"]])
+
+    # Run benchmark using mlr3.
+    bmr <- benchmark(benchmark_grid(
+      tmp, learners, ResamplingCustom$new()$instantiate(tmp, train_splits, test_splits)
+    ))
+    # Score benchmark such that we get access to prediction objects.
+    bmr <- bmr$score()
+    # Loop over and write out predictions for all models (zero-indexed,
+    # since we need this for getting the right survival functions).
+    for (model in 0:length(model_names)) {
+      if (!dir.exists(here::here(
+        "data", "results_reproduced", "survival_functions", project, cancer, model_names[(model + 1)]
+      ))) {
+        dir.create(
+          here::here(
+            "data", "results_reproduced", "survival_functions", project, cancer, model_names[(model + 1)]
+          ),
+          recursive = TRUE
         )
-      )
+      }
+      # Write out CSV file of survival function prediction for each split.
+      for (i in 1:(config$outer_repetitions * config$outer_splits)) {
+        data.frame(bmr[((1 + (model * (config$outer_repetitions * config$outer_splits))):((model + 1) * (config$outer_repetitions * config$outer_splits)))]$prediction[[i]]$data$distr, check.names = FALSE) %>% readr::write_csv(
+          here::here(
+            "data", "results_reproduced", "survival_functions", project, cancer, model_names[(model + 1)], paste0("split_", i, ".csv")
+          )
+        )
+      }
     }
   }
 }

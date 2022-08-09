@@ -7,7 +7,7 @@
     },
     "gex_type": {
         "CLLE-ES": "seq",
-        "PACA-AU": "array", 
+        "PACA-AU": "array",
         "PACA-CA": "seq",
         "LIRI-JP": "seq"
     },
@@ -52,15 +52,39 @@
         "ALL",
         "AML",
         "WT"
-
+    ],
+    "non_full_modality_tcga_cancers": [
+        "SKCM",
+        "LAML",
+        "GBM",
+        "READ"
     ],
     "icgc_modalities": {
-        "CLLE-ES": ["clinical", "gex", "mutation"],
-        "PACA-AU": ["clinical", "gex", "mutation"],
-        "LICA-FR": ["clinical", "gex", "mutation"],
-        "PACA-CA": ["clinical", "gex", "mutation"],
-        "LIRI-JP": ["clinical", "gex", "mutation"]
-
+        "CLLE-ES": [
+            "clinical",
+            "gex",
+            "mutation"
+        ],
+        "PACA-AU": [
+            "clinical",
+            "gex",
+            "mutation"
+        ],
+        "LICA-FR": [
+            "clinical",
+            "gex",
+            "mutation"
+        ],
+        "PACA-CA": [
+            "clinical",
+            "gex",
+            "mutation"
+        ],
+        "LIRI-JP": [
+            "clinical",
+            "gex",
+            "mutation"
+        ]
     },
     "outer_repetitions": 5,
     "outer_splits": 5
