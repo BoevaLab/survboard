@@ -55,7 +55,7 @@ bash scripts/sh/reproduce_results_statistical_standard.R
 will reproduce results for the standard setting on all three considered projects (TCGA, ICGC and TARGET) for both neural and statistical models. All reproduced results will be written to a newly created `results_reproduced` which will have the following structure (similar to our results, obtainable from the links above):
 
 ```
-survival_benchmark
+survboard
 └───results_reproduced
        survival_functions
         └────TCGA

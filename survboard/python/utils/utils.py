@@ -9,7 +9,7 @@ from sklearn.model_selection import StratifiedKFold
 from skorch.dataset import ValidSplit, get_len
 from skorch.utils import to_numpy
 
-from survival_benchmark.python.utils.hyperparameters import ACTIVATION_FN_FACTORY
+from survboard.python.utils.hyperparameters import ACTIVATION_FN_FACTORY
 
 
 def multimodal_dropout(x, p_multimodal_dropout, blocks, upweight=True):

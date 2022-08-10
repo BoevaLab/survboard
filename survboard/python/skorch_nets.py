@@ -2,8 +2,8 @@ import torch
 from skorch.net import NeuralNet
 from skorch.utils import to_tensor
 
-from survival_benchmark.python.breslow import BreslowEstimator
-from survival_benchmark.python.utils.utils import inverse_transform_survival_target
+from survboard.python.breslow import BreslowEstimator
+from survboard.python.utils.utils import inverse_transform_survival_target
 
 
 class CoxPHNet(NeuralNet):

@@ -21,21 +21,21 @@ from skorch.callbacks import EarlyStopping, LRScheduler
 from skorch.dataset import Dataset
 from skorch.helper import predefined_split
 from sksurv.nonparametric import kaplan_meier_estimator
-from survival_benchmark.python.criterion import (
+from survboard.python.criterion import (
     intermediate_fusion_mean_criterion,
     naive_neural_criterion,
 )
-from survival_benchmark.python.modules import (
+from survboard.python.modules import (
     IntermediateFusionMean,
     NaiveNeural,
 )
-from survival_benchmark.python.skorch_nets import (
+from survboard.python.skorch_nets import (
     IntermediateFusionMeanNet,
     NaiveNeuralNet,
 )
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from survival_benchmark.python.utils.utils import (
+from survboard.python.utils.utils import (
     StratifiedSkorchSurvivalSplit,
     StratifiedSurvivalKFold,
     get_blocks,

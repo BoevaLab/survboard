@@ -1,6 +1,6 @@
 import torch
 
-from survival_benchmark.python.utils.utils import neg_par_log_likelihood
+from survboard.python.utils.utils import neg_par_log_likelihood
 
 
 class intermediate_fusion_mean_criterion(torch.nn.Module):
