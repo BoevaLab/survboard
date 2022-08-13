@@ -1,14 +1,13 @@
 import argparse
-from ast import arg
-import os
 import fnmatch
 import json
+import os
+from collections import defaultdict
+from itertools import chain, combinations
+
 import numpy as np
 import pandas as pd
-from collections import defaultdict, Counter
-from pandas.api.types import is_string_dtype, is_numeric_dtype
-import fnmatch
-from itertools import chain, combinations
+from pandas.api.types import is_numeric_dtype, is_string_dtype
 
 base_variables = ["AGE_IN_DAYS", "OS_DAYS", "OS_STATUS"]
 base_var_to_drop = ["AGE", "OS_MONTHS", "PROTOCOL", "ETHNICITY"]
@@ -16,7 +15,9 @@ pattern = ["clinical_patient", "mrna_seq_rpkm", "cna", "methylation_hm27", "mirn
 modalities = ["clinical", "gex", "cnv", "meth", "mirna", "mut"]
 
 
-def process_clinical(file, base_variables, base_var_to_drop, dummify: bool = False):
+def process_clinical(
+    file, base_variables, base_var_to_drop, keep_missing_zero_ost: bool = False, dummify: bool = False
+):
     categorical_var = []
     numeric_var = []
     df = pd.read_csv(file, sep="\t", index_col=0, header=4)
@@ -46,12 +47,13 @@ def process_clinical(file, base_variables, base_var_to_drop, dummify: bool = Fal
                 continue
             numeric_var.append(var)
 
-    missing_survival = df[df["OS_STATUS"].isna()].index.values
-    missing_osdays = df[df["OS_days"].isna()].index.values
-    zero_OS = df[df["OS_DAYS"].astype(float) == 0].index.values
-    ids_to_remove = np.union1d(missing_survival, zero_OS, missing_osdays)
+    if keep_missing_zero_ost is False:
+        missing_survival = df[df["OS_STATUS"].isna()].index.values
+        missing_osdays = df[df["OS_days"].isna()].index.values
+        zero_OS = df[df["OS_DAYS"].astype(float) == 0].index.values
+        ids_to_remove = np.union1d(missing_survival, zero_OS, missing_osdays)
 
-    df = df.drop(index=df.index[df.index.isin(ids_to_remove)])
+        df = df.drop(index=df.index[df.index.isin(ids_to_remove)])
 
     clin_df = df[base_variables + categorical_var + numeric_var]
 
@@ -89,7 +91,7 @@ def process_mutation(mutation_df, save_here=None):
     return mutation_data
 
 
-def process_molecular(file, ids_to_drop=None, mut_path=None, impute=False):
+def process_molecular(file, ids_to_drop=None, mut_path=None, impute=False, primary_tissue_only: bool = True):
     df = pd.read_csv(file, sep="\t", index_col=0)
     if "mutation" in file:
         df = process_mutation(df, mut_path)
@@ -100,7 +102,9 @@ def process_molecular(file, ids_to_drop=None, mut_path=None, impute=False):
     index_split = np.array(list(map(lambda x: x.rsplit("-", 1), df.index)))
     df.index = index_split[:, 0]
     df["tss"] = index_split[:, 1]
-    df = df[df["tss"].isin(["01", "03", "09"])]
+
+    if primary_tissue_only:
+        df = df[df["tss"].isin(["01", "03", "09"])]
 
     df = df.drop(index=df.index[df.index.isin(ids_to_drop)], columns="tss")
 
@@ -170,6 +174,7 @@ def main(data_dir):
                     os.path.join(data_dir, f"{cancer}", f),
                     base_variables,
                     base_var_to_drop,
+                    keep_missing_zero_ost=False,
                     dummify=False,
                 )
 
@@ -182,7 +187,10 @@ def main(data_dir):
 
             else:
                 df, features_missing_count = process_molecular(
-                    os.path.join(data_dir, f"{cancer}", f), ids_to_remove, impute=True
+                    os.path.join(data_dir, f"{cancer}", f),
+                    ids_to_remove,
+                    impute=True,
+                    primary_tissue_only=True,
                 )
 
                 if df.empty:
