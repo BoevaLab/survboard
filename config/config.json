@@ -1,7 +1,7 @@
 {
     "gex_log": {
         "CLLE-ES": true,
-        "PACA-AU": false,
+        "PACA-AU": true,
         "PACA-CA": true,
         "LIRI-JP": true
     },
@@ -20,7 +20,7 @@
     "train_split_name": "train_splits.csv",
     "test_split_name": "test_splits.csv",
     "tcga_cancers": [
-        "BLCA",
+       	"BLCA",
         "BRCA",
         "COAD",
         "ESCA",
@@ -43,16 +43,21 @@
         "READ"
     ],
     "icgc_cancers": [
-        "PACA-AU",
-        "CLLE-ES",
-        "PACA-CA",
-        "LIRI-JP"
+        "LIRI-JP",
+	"PACA-CA",
+	"PACA-AU",
+	"CLLE-ES"
     ],
     "target_cancers": [
         "ALL",
-        "AML",
         "WT"
     ],
+    "metabric_cancers": [
+        "BRCA"
+    ],
+    "metabric_modalities": {
+        "BRCA": ["clinical", "gex", "mut", "cnv", "meth"]
+    },
     "non_full_modality_tcga_cancers": [
         "SKCM",
         "LAML",
@@ -63,29 +68,222 @@
         "CLLE-ES": [
             "clinical",
             "gex",
-            "mutation"
+            "mut"
         ],
         "PACA-AU": [
             "clinical",
             "gex",
-            "mutation"
-        ],
-        "LICA-FR": [
-            "clinical",
-            "gex",
-            "mutation"
+            "mut"
         ],
         "PACA-CA": [
             "clinical",
             "gex",
-            "mutation"
+            "mut"
         ],
         "LIRI-JP": [
             "clinical",
             "gex",
-            "mutation"
+            "mut"
+        ]
+    },
+    "tcga_modalities": {
+        "BLCA": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "BRCA": [
+            "clinical",   
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "COAD": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "ESCA": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "HNSC": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "KIRC": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "KIRP": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "LGG": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "LUAD": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "PAAD": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "SARC": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "SKCM": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth"
+        ],
+        "STAD": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "UCEC": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "OV": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "LIHC": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "LUSC": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "LAML": [
+            "clinical",
+            "gex",
+            "meth",
+            "cnv",
+            "mirna"
+        ],
+        "CESC": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "rppa",
+            "mirna"
+        ],
+        "GBM": [
+            "clinical",
+            "gex",
+            "mut",
+            "cnv"
+        ],
+        "READ": [
+            "clinical",
+            "gex",
+            "mut",
+            "meth",
+            "cnv",
+            "mirna"
+        ]
+    },
+    "target_modalities": {
+        "WT": [
+            "clinical",
+            "gex",
+            "mirna",
+            "cnv",
+            "meth"
+        ],
+        "ALL": [
+            "clinical",
+            "gex",
+            "mirna",
+            "cnv"
         ]
     },
     "outer_repetitions": 5,
-    "outer_splits": 5
+    "outer_splits": 5,
+    "random_state": 42
 }
