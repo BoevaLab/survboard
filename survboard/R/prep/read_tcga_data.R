@@ -15,13 +15,13 @@ suppressPackageStartupMessages({
 read_raw_clinical_data <- function() {
   list(
     clinical_data_resource_outcome = readxl::read_xlsx(
-      here::here("data_template", "raw", "TCGA", "TCGA-CDR-SupplementalTableS1.xlsx"),
+      here::here("data_template", "TCGA", "TCGA-CDR-SupplementalTableS1.xlsx"),
       guess_max = 2500,
       range = cell_cols("B:AH")
     ),
     clinical_with_followup = read_tsv(
       here::here(
-        "data_template", "raw", "TCGA", "clinical_with_followup.tsv"
+        "data_template", "TCGA", "clinical_PANCAN_patient_with_followup.tsv"
       ),
       guess_max = 1e5
     )

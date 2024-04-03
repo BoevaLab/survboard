@@ -20,9 +20,12 @@ rerun_preprocessing_R <- function(keep_non_primary_samples = FALSE, keep_patient
     library(tibble)
     library(maftools)
     library(vroom)
+    library(stringr)
 
     source(here::here("survboard", "R", "prep", "prepare_tcga_data.R"))
     source(here::here("survboard", "R", "prep", "prepare_icgc_data.R"))
+    source(here::here("survboard", "R", "prep", "prepare_metabric_data.R"))
+    source(here::here("survboard", "R", "prep", "prepare_target_data.R"))
     source(here::here("survboard", "R", "prep", "read_tcga_data.R"))
   })
 
@@ -32,7 +35,7 @@ rerun_preprocessing_R <- function(keep_non_primary_samples = FALSE, keep_patient
   # Increase VROOM connection size for larger PANCAN files.
   Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 
-  # Read in all PANCAN files.
+  #  Read in all PANCAN files.
   gex_master <- vroom(
     here::here(
       "data_template", "TCGA", "EBPlusPlusAdjustPANCAN_IlluminaHiSeq_RNASeqV2.geneExp.tsv"
@@ -58,7 +61,7 @@ rerun_preprocessing_R <- function(keep_non_primary_samples = FALSE, keep_patient
   ))
   # Create patient by gene matrix for mutation. We count only non-silent mutations
   # (which is the default of `maftools::mutCountMatrix`) and keep non mutated
-  # genes (for the the pancancer setting).
+  #  genes (for the the pancancer setting).
   mut_master <- mutCountMatrix(mutation,
     removeNonMutated = FALSE
   )
@@ -77,55 +80,106 @@ rerun_preprocessing_R <- function(keep_non_primary_samples = FALSE, keep_patient
     "READ",
     "SKCM"
   )
-
   # Preprocess individual TCGA cancer datasets, being careful to include
   # the correct modality sets for each cancer, since not every cancer 
   # has every modality available.
   for (cancer in config$tcga_cancers[!(config$tcga_cancers %in% non_full_cancers)]) {
-    prepare_new_cancer_dataset(
-      cancer = cancer, include_rppa = TRUE, standard_clinical = TRUE,
-      keep_non_primary_samples = keep_non_primary_samples, keep_patients_without_survival_information = keep_patients_without_survival_information
+   next
+	  prepare_new_cancer_dataset(
+      cancer = cancer, include_rppa = TRUE,
+      tcga_cdr_master=tcga_cdr,
+      tcga_w_followup_master=tcga_w_followup,
+      gex_master=gex_master,
+      cnv_master=cnv_master,
+      meth_master=meth_master,
+      rppa_master=rppa_master,
+      mirna_master=mirna_master,
+      mut_master=mut_master,
+      keep_non_primary_samples = FALSE, keep_patients_without_survival_information = FALSE
+
     )
   }
 
-  prepare_new_cancer_dataset(
-    cancer = "LAML",
-    include_mutation = FALSE,
-    include_rppa = FALSE
-  )
+ # prepare_new_cancer_dataset(
+ ##   cancer = "LAML",
+ #   include_mutation = FALSE,
+ #   include_rppa = FALSE,
+ #     tcga_cdr_master=tcga_cdr,
+ #     tcga_w_followup_master=tcga_w_followup,
+ #     gex_master=gex_master,
+ #     cnv_master=cnv_master,
+ #     meth_master=meth_master,
+ #     rppa_master=rppa_master,
+ #     mirna_master=mirna_master,
+ #     mut_master=mut_master,
+ #  keep_non_primary_samples = FALSE, keep_patients_without_survival_information = FALSE
+ # )
 
-  prepare_new_cancer_dataset(
-    cancer = "CESC",
-    include_mutation = TRUE,
-    include_rppa = TRUE,
-    standard_clinical = TRUE
-  )
+ # prepare_new_cancer_dataset(
+ #   cancer = "CESC",
+ #   include_mutation = TRUE,
+ #   include_rppa = TRUE,
+ #   tcga_cdr_master=tcga_cdr,
+ #     tcga_w_followup_master=tcga_w_followup,
+ #     gex_master=gex_master,
+ #     cnv_master=cnv_master,
+ #     meth_master=meth_master,
+ #     rppa_master=rppa_master,
+ #     mirna_master=mirna_master,
+ #     mut_master=mut_master,
+ #    keep_non_primary_samples = FALSE, keep_patients_without_survival_information = FALSE
+ # )
 
-  prepare_new_cancer_dataset(
-    cancer = "GBM",
-    include_methylation = FALSE,
-    include_rppa = FALSE,
-    include_mirna = FALSE,
-    standard_clinical = TRUE
-  )
+ # prepare_new_cancer_dataset(
+ #   cancer = "GBM",
+ #   include_methylation = FALSE,
+ ##   include_rppa = FALSE,
+ #   include_mirna = FALSE,
+ #     tcga_cdr_master=tcga_cdr,
+ #     tcga_w_followup_master=tcga_w_followup,
+ #     gex_master=gex_master,
+ #     cnv_master=cnv_master,
+ #     meth_master=meth_master,
+ #     rppa_master=rppa_master,
+ #     mirna_master=mirna_master,
+ #     mut_master=mut_master,
+ #    keep_non_primary_samples = FALSE, keep_patients_without_survival_information = FALSE
+ # )
 
-  prepare_new_cancer_dataset(
-    cancer = "READ",
-    include_rppa = FALSE,
-    standard_clinical = TRUE
-  )
+ # prepare_new_cancer_dataset(
+ #   cancer = "READ",
+ #   include_rppa = FALSE,
+ #     tcga_cdr_master=tcga_cdr,
+ #     tcga_w_followup_master=tcga_w_followup,
+ #     gex_master=gex_master,
+ #     cnv_master=cnv_master,
+ #     meth_master=meth_master,
+ #     rppa_master=rppa_master,
+ #     mirna_master=mirna_master,
+ #     mut_master=mut_master
+ # )
 
-  prepare_new_cancer_dataset(
-    cancer = "SKCM", include_rppa = FALSE, standard_clinical = TRUE,
-    include_gex = TRUE, include_mirna = FALSE, include_mutation = TRUE,
-    include_methylation = TRUE, include_cnv = FALSE
-  )
+ # prepare_new_cancer_dataset(
+ ##   cancer = "SKCM", include_rppa = FALSE,
+ #   include_gex = TRUE, include_mirna = FALSE, include_mutation = TRUE,
+ #   include_methylation = TRUE, include_cnv = FALSE,
+ #     tcga_cdr_master=tcga_cdr,
+ #     tcga_w_followup_master=tcga_w_followup,
+ #     gex_master=gex_master,
+ #     cnv_master=cnv_master,
+ #     meth_master=meth_master,
+ #     rppa_master=rppa_master,
+ #     mirna_master=mirna_master,
+ #     mut_master=mut_master,
+ #    keep_non_primary_samples = FALSE, keep_patients_without_survival_information = FALSE
+ # )
 
   # Preprocess all ICGC datasets.
   for (cancer in config$icgc_cancers) {
-    prepare_icgc(cancer, keep_non_primary_samples = keep_non_primary_samples, keep_patients_without_survival_information = keep_patients_without_survival_information)
+    prepare_icgc(cancer, keep_non_primary_samples = FALSE, keep_patients_without_survival_information = FALSE)
   }
-
+  prepare_metabric()
+  prepare_target()
   return(NULL)
 }
 

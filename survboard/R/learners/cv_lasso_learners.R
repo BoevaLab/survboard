@@ -18,7 +18,9 @@ LearnerSurvCVGlmnetCustom <- R6Class("LearnerSurvCVGlmnetCustom",
         s = p_fct(c("lambda.1se", "lambda.min"), default = "lambda.min", tags = "predict"),
         standardize = p_lgl(default = TRUE, tags = "train"),
         favor_clinical = p_lgl(default = FALSE, tags = "train"),
-        nfolds = p_int(3, 10, default = 5, tags = "train")
+        nfolds = p_int(3, 10, default = 5, tags = "train"),
+        alpha = p_dbl(0, 1, default = 1, tags = "train"),
+	nlambda = p_int(5, 100, default = 100, tags = "train")
       )
 
       super$initialize(

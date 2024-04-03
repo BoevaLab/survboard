@@ -20,22 +20,14 @@ LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
         nsets = p_int(1, 300, default = 300, tags = "train"),
         num.trees.pre = p_int(1, 1500, default = 1500, tags = "train"),
         splitrule = p_fct(c("logrank", "extratrees", "C", "maxstat"), default = "extratrees", tags = "train"),
-        always.select.block = p_int(0, 1, default = 0, tags = "train")
-      )
-
-      ps$values <- list(
-        block.method = "BlockForest",
-        num.trees = 2000,
-        mtry = NULL,
-        nsets = 300,
-        num.trees.pre = 1500,
-        splitrule = "extratrees",
-        always.select.block = 0
+        always.select.block = p_int(0, 1, default = 0, tags = "train"),
+	 respect.unordered.factors = p_fct(c("ignore", "order", "partition"), default = "ignore", tags = "train") # for splitrule == "extratrees", def = partition
       )
 
       super$initialize(
         id = "surv.block_forest",
         param_set = ps,
+	properties = c("missings"),
         predict_types = c("distr"),
         feature_types = c("logical", "integer", "numeric", "character", "factor", "ordered"),
         packages = c("mlr3learners", "blockForest")
@@ -48,9 +40,11 @@ LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
         library(blockForest)
         library(survival)
         library(here)
-        source(here::here("survboard", "R", "utils.R"))
+        source(here::here("survboard", "R", "utils", "utils.R"))
       })
-
+      #print("BLOCKFOREST")
+      #print(sum(is.na(task$data(cols = task$feature_names))))
+      #stop("HEY BF")
       pv <- self$param_set$get_values(tags = "train")
       # Get indices of different modalities for usage during BlockForest.
       blocks <- get_block_assignment(

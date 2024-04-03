@@ -230,17 +230,17 @@ prepare_icgc <- function(cancer, keep_non_primary_samples = FALSE, keep_patients
   )
   sample <- vroom::vroom(
     here::here(
-      "data", "raw", "ICGC", paste0("sample.", cancer, ".tsv.gz")
+      "data_template", "ICGC", paste0("sample.", cancer, ".tsv.gz")
     )
   )
   specimen <- vroom::vroom(
     here::here(
-      "data", "raw", "ICGC", paste0("specimen.", cancer, ".tsv.gz")
+      "data_template", "ICGC", paste0("specimen.", cancer, ".tsv.gz")
     )
   )
   donor <- vroom::vroom(
     here::here(
-      "data", "raw", "ICGC", paste0("donor.", cancer, ".tsv.gz")
+      "data_template", "ICGC", paste0("donor.", cancer, ".tsv.gz")
     )
   ) %>%
     mutate(
@@ -264,16 +264,16 @@ prepare_icgc <- function(cancer, keep_non_primary_samples = FALSE, keep_patients
   }
   donor <- donor %>%
     filter(!is.na(age) & !is.na(icgc_donor_id)) %>%
-    mutate(cancer_history_relative = recode(cancer_history_relative, `unknown` = "NA"))
+    mutate(cancer_history_relative = recode(cancer_history_relative, `unknown` = ".MISSING"))
 
   if (config$exposure[[cancer]]) {
     exposure <- vroom::vroom(
       here::here(
-        "data", "raw", "ICGC", paste0("donor_exposure.", cancer, ".tsv.gz")
+        "data_template", "ICGC", paste0("donor_exposure.", cancer, ".tsv.gz")
       )
     ) %>%
-      mutate(alcohol_history = recode(alcohol_history, `Don't know/Not sure` = "NA")) %>%
-      mutate(tobacco_smoking_history_indicator = recode(tobacco_smoking_history_indicator, `Smoking history not documented` = "NA"))
+      mutate(alcohol_history = recode(alcohol_history, `Don't know/Not sure` = ".MISSING")) %>%
+      mutate(tobacco_smoking_history_indicator = recode(tobacco_smoking_history_indicator, `Smoking history not documented` = ".MISSING"))
 
     donor <- donor %>% left_join(y = exposure %>% dplyr::select(icgc_donor_id, tobacco_smoking_history_indicator, alcohol_history))
   }
@@ -282,7 +282,7 @@ prepare_icgc <- function(cancer, keep_non_primary_samples = FALSE, keep_patients
   donor_numerical <- donor[, -(1:3)][, which(sapply(donor[, -(1:3)], function(x) is.numeric(x))), drop = FALSE]
   donor_numerical_dropped_columns <- apply(donor_numerical, 2, function(x) any(is.na(x)))
   donor_numerical <- donor_numerical[, !donor_numerical_dropped_columns]
-  donor_categorical <- donor[, -(1:3)][, which(sapply(donor[, -(1:3)], function(x) !is.numeric(x))), drop = FALSE] %>% replace(is.na(.), "NA")
+  donor_categorical <- donor[, -(1:3)][, which(sapply(donor[, -(1:3)], function(x) !is.numeric(x))), drop = FALSE] %>% replace(is.na(.), ".MISSING")
   donor <- cbind(donor_admin, donor_numerical, donor_categorical)
   common_samples <- list(donor$icgc_donor_id)
 
@@ -290,13 +290,13 @@ prepare_icgc <- function(cancer, keep_non_primary_samples = FALSE, keep_patients
     if (config$gex_type[[cancer]] == "seq") {
       gex <- vroom::vroom(
         here::here(
-          "data", "raw", "ICGC", paste0("exp_seq", ".", cancer, ".tsv.gz")
+          "data_template", "ICGC", paste0("exp_seq", ".", cancer, ".tsv.gz")
         )
       )
     } else {
       gex <- vroom::vroom(
         here::here(
-          "data", "raw", "ICGC", paste0("exp_array", ".", cancer, ".tsv.gz")
+          "data_template", "ICGC", paste0("exp_array", ".", cancer, ".tsv.gz")
         )
       )
     }
@@ -316,10 +316,10 @@ prepare_icgc <- function(cancer, keep_non_primary_samples = FALSE, keep_patients
     gex <- add_missing_modality_samples_icgc(gex, donor$icgc_donor_id)
   }
 
-  if ("mutation" %in% config$icgc_modalities[[cancer]]) {
+  if ("mut" %in% config$icgc_modalities[[cancer]]) {
     mut <- maftools::icgcSimpleMutationToMAF(
       here::here(
-        "data", "raw", "ICGC", paste0("simple_somatic_mutation.open", ".", cancer, ".tsv.gz")
+        "data_template", "ICGC", paste0("simple_somatic_mutation.open", ".", cancer, ".tsv.gz")
       ),
       MAFobj = TRUE
     )
@@ -401,7 +401,7 @@ prepare_icgc <- function(cancer, keep_non_primary_samples = FALSE, keep_patients
     dplyr::rename(patient_id = icgc_donor_id) %>%
     write_csv(
       here::here(
-        "data", "ICGC", paste0(cancer, "_data_incomplete_modalities_preprocessed.csv")
+        "data_reproduced", "ICGC", paste0(cancer, "_data_incomplete_modalities_preprocessed.csv")
       )
     )
   return(NULL)
