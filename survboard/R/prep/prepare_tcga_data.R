@@ -168,21 +168,22 @@ prepare_clinical_data <- function(clinical_raw, clinical_ext_raw, cancer, keep_p
     filter(type == cancer) %>%
     dplyr::select(
       bcr_patient_barcode, OS, OS.time,
-      age_at_initial_pathologic_diagnosis,
+      birth_days_to,
       gender,
       race,
       ajcc_pathologic_tumor_stage,
       clinical_stage,
       histological_type
     ) %>%
-    mutate(race = recode(race, `[Unknown]` = "NA", `[Not Available]` = "NA", `[Not Evaluated]` = "NA")) %>%
-    mutate(ajcc_pathologic_tumor_stage = recode(ajcc_pathologic_tumor_stage, `[Unknown]` = "NA", `[Not Available]` = "NA", `[Discrepancy]` = "NA", `[Not Applicable]` = "NA")) %>%
-    mutate(clinical_stage = recode(clinical_stage, `[Not Available]` = "NA", `[Discrepancy]` = "NA", `[Not Applicable]` = "NA")) %>%
-    mutate(histological_type = recode(histological_type, `[Unknown]` = "NA", `[Not Available]` = "NA", `[Discrepancy]` = "NA", `[Not Applicable]` = "NA")) %>%
-    mutate(race = replace_na(race, "NA")) %>%
-    mutate(ajcc_pathologic_tumor_stage = replace_na(ajcc_pathologic_tumor_stage, "NA")) %>%
-    mutate(clinical_stage = replace_na(clinical_stage, "NA")) %>%
-    mutate(histological_type = replace_na(histological_type, "NA"))
+    mutate(birth_days_to = -(birth_days_to / 365.25)) %>%
+    mutate(race = recode(race, `[Unknown]` = ".MISSING", `[Not Available]` = ".MISSING", `[Not Evaluated]` = ".MISSING")) %>%
+    mutate(ajcc_pathologic_tumor_stage = recode(ajcc_pathologic_tumor_stage, `[Unknown]` = ".MISSING", `[Not Available]` = ".MISSING", `[Discrepancy]` = ".MISSING", `[Not Applicable]` = ".MISSING")) %>%
+    mutate(clinical_stage = recode(clinical_stage, `[Not Available]` = ".MISSING", `[Discrepancy]` = ".MISSING", `[Not Applicable]` = ".MISSING")) %>%
+    mutate(histological_type = recode(histological_type, `[Unknown]` = ".MISSING", `[Not Available]` = ".MISSING", `[Discrepancy]` = ".MISSING", `[Not Applicable]` = ".MISSING")) %>%
+    mutate(race = replace_na(race, ".MISSING")) %>%
+    mutate(ajcc_pathologic_tumor_stage = replace_na(ajcc_pathologic_tumor_stage, ".MISSING")) %>%
+    mutate(clinical_stage = replace_na(clinical_stage, ".MISSING")) %>%
+    mutate(histological_type = replace_na(histological_type, ".MISSING"))
   admin <- clinical[, c("bcr_patient_barcode", "OS", "OS.time")]
   colnames(admin)[1] <- "patient_id"
   # Perform imputation separately.
@@ -257,7 +258,8 @@ prepare_rppa_pancan <- function(rppa, keep_non_primary_samples = FALSE) {
 prepare_mirna_pancan <- function(mirna, keep_non_primary_samples = FALSE) {
   rownames(mirna) <- mirna[, 1]
   mirna <- mirna[, 2:ncol(mirna)]
-  mrina <- preprocess(mirna, log = TRUE, keep_non_primary_samples = keep_non_primary_samples)
+  mirna <- preprocess(mirna, log = TRUE, keep_non_primary_samples = keep_non_primary_samples)
+  return(mirna)
 }
 
 #' Appends missing modality samples to complete modality samples for a specific modality, such
@@ -296,6 +298,14 @@ append_missing_modality_samples <- function(df, barcodes) {
 #'
 #' @returns NULL.
 prepare_new_cancer_dataset <- function(cancer,
+                                      tcga_cdr_master,
+                                      tcga_w_followup_master,
+                                      gex_master,
+                                      cnv_master,
+                                      meth_master,
+                                      rppa_master,
+                                      mirna_master,
+                                      mut_master,
                                        include_rppa = FALSE,
                                        include_mirna = TRUE,
                                        include_mutation = TRUE,
@@ -313,8 +323,6 @@ prepare_new_cancer_dataset <- function(cancer,
   # NB: Appending the missing modality samples is necessary such that we still
   # have the same features/modalities for all samples in the missing
   # modality samples (even if some modalities are completely absent for some samples).
-  tcga_cdr_master <- tcga_cdr
-  tcga_w_followup_master <- tcga_w_followup
   clinical <- prepare_clinical_data(tcga_cdr_master, tcga_w_followup_master, cancer = cancer, keep_patients_without_survival_information = keep_patients_without_survival_information)
   sample_barcodes <- list(clinical$patient_id)
   if (include_gex) {
@@ -433,7 +441,7 @@ prepare_new_cancer_dataset <- function(cancer,
           filter(rowname %in% common_samples) %>%
           arrange(desc(rowname)) %>%
           dplyr::select(-rowname) %>%
-          rename_with(function(x) paste0("mutation_", x))
+          rename_with(function(x) paste0("mut_", x))
       )
   }
 

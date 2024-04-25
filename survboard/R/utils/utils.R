@@ -9,7 +9,7 @@
 get_folds <- function(event, n_folds, n_samples) {
   # Load package within function for parallelisation.
   suppressPackageStartupMessages(library(splitTools))
-  foldids <- create_folds(target, k = n_folds, invert = TRUE, type = "stratified")
+  foldids <- create_folds(event, k = n_folds, invert = TRUE, type = "stratified")
   foldids_formatted <- rep(1, n_samples)
   for (i in 2:length(foldids)) {
     foldids_formatted[foldids[[i]]] <- i
@@ -102,4 +102,88 @@ get_prioritylasso_block_order <- function(target, data, blocks, foldid, lambda.t
     block_order <- c("clinical", block_order[-which(block_order == "clinical")])
   }
   return(block_order)
+}
+
+
+
+#' Format splits into a usable format for R. Excludes NAs and increments
+#' all indices by one to account for the indexing difference between
+#' R and Python.
+#'
+#' @param raw_splits data.frame. Raw data.frame of splits as read from the 
+#'                   corresponding CSV files.
+#'
+#' @returns list. List of length 25 (one element for each outer split),
+#' each containing the indices corresponding to the split in question.
+format_splits <- function(raw_splits) {
+  if (any(is.na(raw_splits))) {
+    apply(data.frame(raw_splits), 1, function(x) unname(x[!is.na(x)]) + 1)
+  } else {
+    x <- unname(as.matrix(raw_splits)) + 1
+    split(x, row(x))
+  }
+}
+
+#' Get splits for SurvBoard benchmark
+#'
+#' @description
+#' Since manually reading in splits can become complicated for the SurvBoard
+#' benchmark, we provide a utility function allowing users to easily
+#' get splits in their scripts. Please see the `examples` folder for full
+#' example usage of this function.
+#'
+#' @param cancer character. Which cancer dataset splits are desired for.
+#'               Must be one of the cancers detailed in Table S2.
+#'               Can be "" if setting == "pancancer".
+#'
+#' @param project character. Which project splits are desired for.
+#'                Must be in c("TCGA", "ICGC", "TARGET").
+
+#' @param n_samples integer. The number of samples in the dataset in question.
+#'                  We need this for datasets including some or all missing
+#'                  modality samples in order to properly include all missing
+#'                  modality samples in the training set.
+#'
+#' @param split_number integer. Which (outer) split is desired. Must be in 1:25.
+#'
+#' @param setting character. Which setting the model is being trained in.
+#'                Must be in c("standard", "missing", "pancancer").
+#'
+#' @returns list. List element containing two vectors, where the first
+#'          vector indicates the indices for the training set and the second
+#'          indicates the indices for the test set.
+get_splits <- function(cancer,
+                       project,
+                       n_samples,
+                       split_number,
+                       setting = "standard") {
+  suppressPackageStartupMessages({
+    library(here)
+    library(rjson)
+    #source(here::here("survboard", "R", "utils", "prod", "utils.R"))
+  })
+  
+  config <- rjson::fromJSON(
+    file = here::here("config", "config.json")
+  )
+  # Various checks to make sure reasonable values are being passed
+  # to the get_splits function.
+  if (setting != "pancancer") {
+    train_splits <- format_splits(readr::read_csv(here::here(
+      "data_reproduced", "splits", project, paste0(cancer, "_train_splits.csv")
+    )))[[split_number]]
+    test_splits <- format_splits(readr::read_csv(here::here(
+      "data_reproduced", "splits", project, paste0(cancer, "_test_splits.csv")
+    )))[[split_number]]
+  }
+  else {
+      train_splits <- format_splits(readr::read_csv(here::here(
+      "data_reproduced", "splits", "TCGA", paste0("pancancer_train_splits.csv")
+    )))[[split_number]]
+    test_splits <- format_splits(readr::read_csv(here::here(
+      "data_reproduced", "splits", "TCGA", paste0("pancancer_test_splits.csv")
+    )))[[split_number]]
+  }
+  
+  return(list(train_ix = train_splits, test_ix = test_splits))
 }

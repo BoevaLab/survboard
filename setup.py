@@ -1,4 +1,5 @@
 """Install package."""
+
 import io
 import re
 
@@ -38,7 +39,6 @@ except FileNotFoundError:
     print("requirements.txt not found.")
     VCS_REQUIREMENTS = []
 
-# TODO: Update these values according to the name of the module.
 setup(
     name="survboard",
     version=read_version("survboard/__init__.py"),  # single place for version
@@ -51,7 +51,6 @@ setup(
     # if you do include them, add pytest to the required packages.
     packages=find_packages(".", exclude=["*tests*"]),
     package_data={"survboard": ["py.typed"]},
-    
     extras_require={
         "vcs": VCS_REQUIREMENTS,
         "test": ["pytest", "pytest-cov"],
