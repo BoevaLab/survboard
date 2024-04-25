@@ -1,7 +1,3 @@
-
-
-
-
 prepare_metabric <- function() {
   
   suppressPackageStartupMessages({

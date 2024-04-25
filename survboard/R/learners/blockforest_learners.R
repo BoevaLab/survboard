@@ -42,9 +42,6 @@ LearnerSurvBlockForest <- R6Class("LearnerSurvBlockForest",
         library(here)
         source(here::here("survboard", "R", "utils", "utils.R"))
       })
-      #print("BLOCKFOREST")
-      #print(sum(is.na(task$data(cols = task$feature_names))))
-      #stop("HEY BF")
       pv <- self$param_set$get_values(tags = "train")
       # Get indices of different modalities for usage during BlockForest.
       blocks <- get_block_assignment(

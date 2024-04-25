@@ -12,6 +12,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from skorch.callbacks import EarlyStopping
 from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.skorch_infra import FixSeed
 from survboard.python.utils.factories import (
@@ -34,8 +35,22 @@ parser.add_argument(
     type=str,
 )
 
+parser.add_argument(
+    "--project",
+    type=str,
+)
 
-def main(fusion: str):
+parser.add_argument(
+    "--cancer",
+    type=str,
+)
+
+
+def main(
+    fusion: str,
+    project: str,
+    cancer: str,
+):
     with open(os.path.join("./config/", "config.json"), "r") as f:
         config = json.load(f)
 
@@ -43,10 +58,8 @@ def main(fusion: str):
 
     for fusion in [fusion]:
         for model_type in ["cox", "eh"]:
-            for project in ["TCGA"]:
-            #for project in ["METABRIC", "TCGA", "ICGC", "TARGET"]:
-                #for cancer in config[f"{project.lower()}_cancers"]:
-                for cancer in ["KIRP"]:
+            for project in [project]:
+                for cancer in [cancer]:
                     data_path = f"./data_reproduced/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
                     data = pd.read_csv(
                         os.path.join(data_path),
@@ -81,11 +94,17 @@ def main(fusion: str):
                             test_splits.iloc[outer_split, :].dropna().values.astype(int)
                         )
                         X_test = data.iloc[test_ix, :].reset_index(drop=True)
-                        X_train = pd.concat([(
-                            data.iloc[train_ix, :]
-                            .sort_values(by="OS_days", ascending=True)
-                            .reset_index(drop=True)
-                        ), data_missing], axis=0)
+                        X_train = pd.concat(
+                            [
+                                (
+                                    data.iloc[train_ix, :]
+                                    .sort_values(by="OS_days", ascending=True)
+                                    .reset_index(drop=True)
+                                ),
+                                data_missing,
+                            ],
+                            axis=0,
+                        )
                         time_train = X_train["OS_days"].values
                         time_test = X_test["OS_days"].values
                         event_train = X_train["OS"].values
@@ -164,7 +183,7 @@ def main(fusion: str):
                         grid = RandomizedSearchCV(
                             net,
                             HYPERPARAM_FACTORY["common_tuned"],
-                            n_jobs=5,
+                            n_jobs=20,
                             cv=StratifiedSurvivalKFold(
                                 n_splits=5,
                                 shuffle=True,
@@ -241,6 +260,4 @@ def main(fusion: str):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main(
-        args.fusion,
-    )
+    main(args.fusion, args.project, args.cancer)

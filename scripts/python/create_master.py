@@ -11,7 +11,6 @@ with open(os.path.join("./config/", "config.json"), "r") as f:
     config = json.load(f)
 config.get("random_state")
 
-# Unimodal
 for project in ["TCGA", "ICGC", "TARGET", "METABRIC"]:
     for cancer in config[f"{project.lower()}_cancers"]:
         master_file = pd.read_csv(

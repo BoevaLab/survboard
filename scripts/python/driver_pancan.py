@@ -141,7 +141,6 @@ def main(model_type, fusion):
                         ),
                     ),
                     ("seed", FixSeed(generator=g)),
-                    # ("gc", GradientNormClipping(gradient_clip_value=5.0))
                 ],
             }
         )

@@ -1,4 +1,5 @@
 import torch
+
 from survboard.python.utils.factories import FUSION_FACTORY
 from survboard.python.utils.misc_utils import (
     calculate_log_hazard_input_size,
@@ -50,7 +51,6 @@ class BaseFusionModel(torch.nn.Module):
     def forward(self, x):
         x = self.zero_impute(x)
         if self.training and self.p_multimodal_dropout > 0.0:
-            #x = self.zero_impute(x)
             x = self.multimodal_dropout(x)
 
         fused = self.fusion(x)

@@ -1,5 +1,6 @@
 import torch
 from skorch.callbacks import EarlyStopping
+
 from survboard.python.model.fusion import (
     EarlyFusion,
     IntermediateFusionConcat,
@@ -49,17 +50,11 @@ HYPERPARAM_FACTORY = {
     },
     "common_tuned": {
         "lr": [0.0005, 0.0008, 0.001, 0.005],
-        #"lr": [0.0001],
         "optimizer__weight_decay": [0.0005, 0.005, 0.05, 0.1],
-        #"optimizer__weight_decay": [0.0],
         "module__modality_hidden_layer_size": [32, 64, 128, 256, 512],
-        #"module__modality_hidden_layer_size": [128],
         "module__modality_hidden_layers": [1],
-        #"module__p_dropout": [0.0],
         "module__p_dropout": [0, 0.2, 0.4, 0.6],
         "batch_size": [1024],
-        #"batch_size": [128]
-        #"callbacks__gc__gradient_clip_value": [1, 3, 5, 10],
     },
     "early_tuned": {},
     "late_mean_tuned": {},

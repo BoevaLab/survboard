@@ -48,9 +48,6 @@ LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
         library(prioritylasso)
         library(mlr3misc)
       })
-      #print("PRIOTIRYLASSO")
-      #print(sum(is.na(task$data(cols = task$feature_names))))
-      #stop("HEY PRIO")
       data <- as_numeric_matrix(task$data(cols = task$feature_names))
       target <- task$truth()
       pv <- self$param_set$get_values(tags = "train")
@@ -65,19 +62,13 @@ LearnerSurvCVPrioritylasso <- R6Class("LearnerSurvCVPrioritylasso",
       # Determine the priority order - see `get_prioritylasso_block_order`
       # for further details.
       missing_mask <- apply(data, 1, function(x) !sum(is.na(x)) > 0)
-      #print(length(missing_mask))
-      #print(missing_mask)
-      #print(target[missing_mask])
-      #print(dim(data[missing_mask, ]))
-      #print(dim(data))
+
       block_order <- get_prioritylasso_block_order(
         target[missing_mask], data[missing_mask, ], unique(sapply(strsplit(task$feature_names, "\\_"), function(x) x[1])), foldids_formatted[missing_mask], pv$lambda.type, favor_clinical
       )
-      #print(block_order)
-      #stop("JUST CHECKING")
+
       # Get feature -> modality index mapping.
       blocks <- get_block_assignment(block_order, task$feature_names)
-      #print(pv)
       # Fit prioritylasso with the specified parameters.
       prioritylasso_fit <- mlr3misc::invoke(
         prioritylasso,
