@@ -133,7 +133,7 @@ scikit-learn
 scikit-survival
 seaborn==0.11.2
 Send2Trash==1.8.0
-setuptools==58.0.4
+setuptools>=70.0.0
 six==1.16.0
 skorch==0.11.0
 smmap==5.0.0
