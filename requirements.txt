@@ -101,7 +101,6 @@ py7zr==0.18.3
 pyasn1==0.4.8
 pyasn1-modules==0.2.7
 pybcj==0.5.1
-pybcpy==0.0.17
 pycodestyle==2.8.0
 pycox==0.2.3
 pycparser==2.21
