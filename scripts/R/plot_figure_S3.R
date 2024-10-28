@@ -176,5 +176,5 @@ cowplot::plot_grid(cowplot::plot_grid(a + theme(legend.position = "none"), b + t
   rel_heights = c(0.9, 0.2)
 )
 
-ggsave("./figures_reproduced/survboard_final_fig_S9.pdf", width = 18, height = 5)
-ggsave("./figures_reproduced/survboard_final_fig_S9.svg", width = 18, height = 5)
+ggsave("./figures_reproduced/survboard_final_fig_S3.pdf", width = 18, height = 5)
+ggsave("./figures_reproduced/survboard_final_fig_S3.svg", width = 18, height = 5)

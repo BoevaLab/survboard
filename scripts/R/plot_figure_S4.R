@@ -69,5 +69,5 @@ a <- data.frame(
 
 final_pairs <- gpairs_lower(a) + labs(color = "") + scale_color_manual(values = ggpubfigs::friendly_pals$muted_nine) + labs(x = "Antolini's C", y = "Antolini's C")
 
-ggsave("./figures_reproduced/survboard_final_fig_S10.pdf", width = 18 * 1.35, height = 5 * 1.5, plot = final_pairs)
-ggsave("./figures_reproduced/survboard_final_fig_S10.svg", width = 18 * 1.35, height = 5 * 1.5, plot = final_pairs)
+ggsave("./figures_reproduced/survboard_final_fig_S4.pdf", width = 18 * 1.35, height = 5 * 1.5, plot = final_pairs)
+ggsave("./figures_reproduced/survboard_final_fig_S4.svg", width = 18 * 1.35, height = 5 * 1.5, plot = final_pairs)
