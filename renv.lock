@@ -1710,7 +1710,7 @@
     },
     "prioritylasso": {
       "Package": "prioritylasso",
-      "Version": "0.2.5",
+      "Version": "0.3.1",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [
@@ -1718,8 +1718,7 @@
         "glmnet",
         "survival",
         "utils"
-      ],
-      "Hash": "4403f13c7b66a934b51be22869d5a9f8"
+      ]
     },
     "prodlim": {
       "Package": "prodlim",
