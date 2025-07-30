@@ -1,0 +1,269 @@
+import argparse
+import json
+import os
+import pathlib
+import platform
+import subprocess
+import sys
+
+import numpy as np
+import pandas as pd
+import torch
+from sklearn.compose import ColumnTransformer
+from sklearn.feature_selection import VarianceThreshold
+from sklearn.metrics import make_scorer
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.utils import parallel_backend
+from skorch.callbacks import EarlyStopping
+from sksurv.nonparametric import kaplan_meier_estimator
+from survboard.python.model.model import SKORCH_MODULE_FACTORY
+from survboard.python.model.skorch_infra import FixSeed
+from survboard.python.utils.factories import (
+    CRITERION_FACTORY,
+    HYPERPARAM_FACTORY,
+    LOSS_FACTORY,
+    SKORCH_NET_FACTORY,
+)
+from survboard.python.utils.misc_utils import (  # get_blocks_gdp,
+    StratifiedSkorchSurvivalSplit,
+    StratifiedSurvivalKFold,
+    get_blocks,
+    get_cumulative_hazard_function_eh,
+    seed_torch,
+    transform,
+    transform_discrete_time,
+)
+
+
+def filter_modality(data, quantile):
+    data_var = data.apply(np.var, axis=0)
+    data_var_quantile = np.quantile(data_var, quantile)
+    chosen_cols = data.iloc[:, np.where(data_var > data_var_quantile)[0]].columns
+    return chosen_cols
+
+
+with open(snakemake.log[0], "w") as f:
+    sys.stderr = f
+    sys.stdout = f
+    with open(os.path.join("./config/", "config.json"), "r") as f:
+        config = json.load(f)
+
+    g = np.random.default_rng(config.get("random_state"))
+    seed_torch(config.get("random_state"))
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+    for fusion in ["gdp"]:
+        for model_type in ["gdp"]:
+            for project in ["TCGA"]:
+                for cancer in [snakemake.wildcards["cancer"]]:
+                    data_path = f"./data_reproduced/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
+                    data = pd.read_csv(
+                        os.path.join(data_path),
+                        low_memory=False,
+                    ).drop(columns=["patient_id"])
+
+                    feature_names = data.columns
+                    column_types = (
+                        pd.Series(feature_names)
+                        .str.rsplit("_")
+                        .apply(lambda x: x[0])
+                        .values
+                    )
+                    mask = np.isin(column_types, ["clinical", "gex", "OS"])
+                    data = data.loc[:, mask]
+                    feature_names = data.columns
+                    column_types = (
+                        pd.Series(feature_names)
+                        .str.rsplit("_")
+                        .apply(lambda x: x[0])
+                        .values
+                    )
+                    survival_data = data.iloc[:, np.where(column_types == "OS")[0]]
+
+                    available_modalities = [
+                        i for i in np.unique(column_types) if i != "OS"
+                    ]
+                    clinical_cols = data.iloc[
+                        :, np.where(np.isin(column_types, ["OS", "clinical"]))[0]
+                    ].columns.tolist()
+                    chosen_cols = []
+                    for modality in [
+                        i for i in available_modalities if i != "clinical"
+                    ]:
+                        if modality in ["gex", "meth", "mut", "cnv"]:
+                            chosen_cols += filter_modality(
+                                data.iloc[
+                                    :, np.where(np.isin(column_types, [modality]))[0]
+                                ],
+                                0.9,
+                            ).tolist()
+                        else:
+                            chosen_cols += filter_modality(
+                                data.iloc[
+                                    :, np.where(np.isin(column_types, [modality]))[0]
+                                ],
+                                0.0,
+                            ).tolist()
+
+                    chosen_cols = clinical_cols + chosen_cols
+
+                    data_overall = data[chosen_cols]
+                    data_overall_vars = data_overall.loc[
+                        :,
+                        np.logical_not(
+                            np.isin(data_overall.columns, ["OS", "OS_days"])
+                        ),
+                    ]
+
+                    ct = ColumnTransformer(
+                        [
+                            (
+                                "numerical",
+                                make_pipeline(
+                                    # VarianceThreshold(threshold=0.01),
+                                    StandardScaler()
+                                ),
+                                np.where(data_overall_vars.dtypes != "object")[0],
+                            ),
+                            (
+                                "categorical",
+                                make_pipeline(
+                                    OneHotEncoder(
+                                        sparse=False, handle_unknown="ignore"
+                                    ),
+                                    VarianceThreshold(threshold=0.01),
+                                    StandardScaler(),
+                                ),
+                                np.where(data_overall_vars.dtypes == "object")[0],
+                            ),
+                        ]
+                    )
+                    data_vars_overall_transformed = pd.DataFrame(
+                        ct.fit_transform(data_overall_vars),
+                        columns=(
+                            ct.transformers_[0][1][0].get_feature_names_out().tolist()
+                            + [
+                                f"clinical_{i}"
+                                for i in ct.transformers_[1][1][1]
+                                .get_feature_names_out()
+                                .tolist()
+                            ]
+                        ),
+                    )
+                    data_finalized = pd.concat(
+                        [
+                            data_vars_overall_transformed,
+                            data_overall.loc[
+                                :, (np.isin(data_overall.columns, ["OS", "OS_days"]))
+                            ],
+                        ],
+                        axis=1,
+                    )
+
+                    data_helper = data.copy(deep=True).drop(columns=["OS_days", "OS"])
+
+                    train_ix = np.array([i for i in range(data_finalized.shape[0])])
+                    X_train = (
+                        data_finalized.iloc[train_ix, :]
+                        .sort_values(by="OS_days", ascending=True)
+                        .reset_index(drop=True)
+                    )
+                    time_train = X_train["OS_days"].values
+                    event_train = X_train["OS"].values
+
+                    X_train = X_train.drop(columns=["OS", "OS_days"])
+                    y_train = transform(time_train, event_train)
+
+                    if fusion == "early":
+                        factory_model_type = f"{model_type}_sgl"
+                    else:
+                        factory_model_type = model_type
+                    net = SKORCH_NET_FACTORY["cox_sgl"](
+                        module=(SKORCH_MODULE_FACTORY[model_type]),
+                        criterion=(CRITERION_FACTORY["cox_sgl"]),
+                        module__fusion_method="early",
+                        module__blocks=get_blocks(X_train.columns),
+                        iterator_train__shuffle=True,
+                    )
+                    net.set_params(
+                        **HYPERPARAM_FACTORY["common_fixed_gdp"],
+                    )
+                    # net.initialize()
+                    # pytorch_total_params = sum(p.numel() for p in net.module_.parameters())
+                    # print(net.module_)
+                    # print(pytorch_total_params)
+                    # print(X_train.shape)
+                    # raise ValueError
+
+                    net.set_params(
+                        **{
+                            "train_split": StratifiedSkorchSurvivalSplit(
+                                0.2,
+                                stratified=True,
+                                random_state=config.get("random_state"),
+                            ),
+                            "callbacks": [
+                                (
+                                    "es",
+                                    EarlyStopping(
+                                        monitor="valid_loss",
+                                        patience=10,
+                                        load_best=True,
+                                    ),
+                                ),
+                                ("seed", FixSeed(generator=g)),
+                            ],
+                        }
+                    )
+                    hyperparams = HYPERPARAM_FACTORY["gdp_tuned"].copy()
+                    # hyperparams.update(HYPERPARAM_FACTORY["gdp_tuned"])
+                    # print(hyperparams)
+                    grid = RandomizedSearchCV(
+                        net,
+                        hyperparams,
+                        n_jobs=1,
+                        cv=StratifiedSurvivalKFold(
+                            n_splits=5,
+                            shuffle=True,
+                            random_state=config.get("random_state"),
+                        ),
+                        scoring=make_scorer(
+                            LOSS_FACTORY["cox"],
+                            greater_is_better=False,
+                        ),
+                        error_score=100,
+                        verbose=0,
+                        n_iter=50,
+                        random_state=42,
+                        # pre_dispatch=15
+                    )
+
+                    # with parallel_backend(backend="threading", n_jobs=15):
+                    grid.fit(X_train.to_numpy().astype(np.float32), y_train)
+                    pathlib.Path(
+                        f"results_reproduced/timings/gdp_{snakemake.wildcards['cancer']}"
+                    ).touch()
+
+    print("--- Python Environment ---")
+    print(f"Python Version: {sys.version}")
+    print(f"Python Executable: {sys.executable}")
+    print(
+        f"Operating System: {platform.system()} {platform.release()} ({platform.version()})"
+    )
+    print(f"Architecture: {platform.machine()}")
+    print(f"Node Name: {platform.node()}")
+    print(f"Current Working Directory: {os.getcwd()}")
+    print(f"Platform: {sys.platform}")  # More specific OS identifier
+    print(f"Processor: {platform.processor()}")
+    print("\n--- Installed Python Packages (pip freeze) ---")
+    try:
+        result = subprocess.run(
+            ["pip", "freeze"], capture_output=True, text=True, check=True
+        )
+        print(result.stdout)
+    except FileNotFoundError:
+        print("pip command not found. Make sure pip is installed and in your PATH.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running pip freeze: {e}")

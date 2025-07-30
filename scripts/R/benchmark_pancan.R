@@ -15,6 +15,9 @@ suppressPackageStartupMessages({
   source(here::here("survboard", "R", "learners", "ranger_learners.R"))
 })
 
+# Seeding for reproducibility.
+set.seed(42)
+
 # Set up parallelisation option.
 future::plan("multicore", workers = 25L)
 options(future.globals.onReference = "ignore")
@@ -25,15 +28,12 @@ config <- rjson::fromJSON(
 
 # Set up mlr3 pipelines.
 remove_constants <- po("removeconstants")
-encode <- po("encode", method = "treatment")
+encode <- po("encode", method = "one-hot")
 fix_factors <- po("fixfactors")
 impute_missing_prediction <- po("imputeoor", affect_columns = selector_type("factor"))
 impute <- po("imputeconstant", constant = 0, affect_columns = selector_grep("clinical"))
 pipe <- remove_constants %>>% fix_factors
 pipe_ohe <- pipe %>>% encode %>>% impute
-
-# Seeding for reproducibility.
-set.seed(42)
 
 # Model names to be reproduced.
 model_names <- c(
@@ -61,14 +61,13 @@ learners <- list(
     learner = lrn("surv.cv_prioritylasso",
       encapsulate = c(train = "evaluate", predict = "evaluate"),
       fallback = lrn("surv.kaplan"),
-      block1.penalization = TRUE, lambda.type = "lambda.min", 
+      block1.penalization = TRUE, lambda.type = "lambda.min",
       standardize = TRUE, nfolds = 5, cvoffset = TRUE, cvoffsetnfolds = 5, favor_clinical = FALSE,
       alpha = 0.9,
       nlambda = 100
     )
   ),
   po("learner", id = "kaplan_meier", learner = lrn("surv.kaplan"))
-
 )
 
 project <- "TCGA"
@@ -101,7 +100,7 @@ tmp <- as_task_surv(data,
 # safety.
 tmp$add_strata("OS")
 # Iterate over `get_splits` to get full train and test splits for usage in mlr3.
-train_splits <- lapply(1:(config$outer_repetitions * config$outer_splits), function(x) get_splits(cancer ="pancan", project = project, n_samples = NA, split_number = x, setting = "pancancer")[["train_ix"]])
+train_splits <- lapply(1:(config$outer_repetitions * config$outer_splits), function(x) get_splits(cancer = "pancan", project = project, n_samples = NA, split_number = x, setting = "pancancer")[["train_ix"]])
 test_splits <- lapply(1:(config$outer_repetitions * config$outer_splits), function(x) get_splits(cancer = "pancan", project = project, n_samples = NA, split_number = x, setting = "pancancer")[["test_ix"]])
 
 # Run benchmark using mlr3.
@@ -112,7 +111,7 @@ bmr <- benchmark(benchmark_grid(
 bmr <- bmr$score()
 # Loop over and write out predictions for all models (zero-indexed,
 # since we need this for getting the right survival functions).
-for (model in 0:(length(model_names)-1)) {
+for (model in 0:(length(model_names) - 1)) {
   if (!dir.exists(here::here(
     "results_reproduced", "survival_functions", "clinical_gex_pancan", project, model_names[(model + 1)]
   ))) {
@@ -132,3 +131,5 @@ for (model in 0:(length(model_names)-1)) {
     )
   }
 }
+
+sessionInfo()

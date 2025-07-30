@@ -1,0 +1,331 @@
+import argparse
+import json
+import os
+import pathlib
+import platform
+import subprocess
+import sys
+
+import numpy as np
+import pandas as pd
+import torch
+from sklearn.compose import ColumnTransformer
+from sklearn.feature_selection import VarianceThreshold
+from sklearn.metrics import make_scorer
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from skorch.callbacks import EarlyStopping
+from sksurv.nonparametric import kaplan_meier_estimator
+from survboard.python.model.model import SKORCH_MODULE_FACTORY
+from survboard.python.model.skorch_infra import FixSeed
+from survboard.python.utils.factories import (
+    CRITERION_FACTORY,
+    HYPERPARAM_FACTORY,
+    LOSS_FACTORY,
+    SKORCH_NET_FACTORY,
+)
+from survboard.python.utils.misc_utils import (  # get_blocks_gdp,
+    StratifiedSkorchSurvivalSplit,
+    StratifiedSurvivalKFold,
+    get_blocks_salmon,
+    get_cumulative_hazard_function_eh,
+    seed_torch,
+    transform,
+)
+
+
+def main():
+    with open(os.path.join("./config/", "config.json"), "r") as f:
+        config = json.load(f)
+
+    g = np.random.default_rng(config.get("random_state"))
+    seed_torch(config.get("random_state"))
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+    for fusion in ["salmon"]:
+        for model_type in ["salmon"]:
+            for project in ["validation"]:
+                for cancer in ["PAAD", "LIHC"]:
+                    data = pd.read_csv(
+                        f"./data_reproduced/{project}/{cancer}_salmon_preprocessed.csv",
+                        low_memory=False,
+                        sep="\t",
+                    )
+                    if cancer == "PAAD":
+                        split_project = "ICGC"
+                        split_cancer = "PACA-CA"
+                    else:
+                        split_project = "TCGA"
+                        split_cancer = "LIHC"
+                    data_helper = pd.read_csv(
+                        f"./data_reproduced/{split_project}/{split_cancer}_salmon_preprocessed.csv",
+                        low_memory=False,
+                        sep="\t",
+                    )
+                    n_train_total = data_helper.shape[0]
+                    train_splits = pd.read_csv(
+                        os.path.join(
+                            f"./data_reproduced/splits/{split_project}/{split_cancer}_train_splits.csv"
+                        )
+                    )
+
+                    data_train_full = data.iloc[[i for i in range(n_train_total)], :]
+                    data_test = data.iloc[
+                        [i for i in range(n_train_total, data.shape[0])], :
+                    ]
+
+                    for outer_split in range(
+                        config["outer_repetitions"] * config["outer_splits"]
+                    ):
+
+                        X_test = data_test.reset_index(drop=True).drop(
+                            columns=["OS", "OS_days"]
+                        )
+                        # print(f"Split: {outer_split+1}/25 starting")
+                        train_ix = (
+                            train_splits.iloc[outer_split, :]
+                            .dropna()
+                            .values.astype(int)
+                        )
+
+                        X_train = (
+                            data_train_full.iloc[train_ix, :]
+                            .sort_values(by="OS_days", ascending=True)
+                            .reset_index(drop=True)
+                        )
+
+                        time_train = X_train["OS_days"].values
+                        event_train = X_train["OS"].values
+
+                        X_train = X_train.drop(columns=["OS", "OS_days"])
+                        ct = ColumnTransformer(
+                            [
+                                (
+                                    "numerical",
+                                    make_pipeline(StandardScaler()),
+                                    np.where(X_train.dtypes != "object")[0],
+                                ),
+                                (
+                                    "categorical",
+                                    make_pipeline(
+                                        OneHotEncoder(
+                                            sparse=False, handle_unknown="ignore"
+                                        ),
+                                        VarianceThreshold(threshold=0.01),
+                                        StandardScaler(),
+                                    ),
+                                    np.where(X_train.dtypes == "object")[0],
+                                ),
+                            ]
+                        )
+                        y_train = transform(time_train, event_train)
+                        X_train = ct.fit_transform(X_train)
+
+                        X_train = pd.DataFrame(
+                            X_train,
+                            columns=(
+                                ct.transformers_[0][1][0]
+                                .get_feature_names_out()
+                                .tolist()
+                            )
+                            + [
+                                f"clinical_{i}"
+                                for i in ct.transformers_[1][1][1]
+                                .get_feature_names_out()
+                                .tolist()
+                            ],
+                        )
+                        X_test = pd.DataFrame(
+                            ct.transform(X_test), columns=X_train.columns
+                        )
+                        available_modalities = np.unique(
+                            pd.Series(X_train.columns)
+                            .str.rsplit("_")
+                            .apply(lambda x: x[0])
+                            .values
+                        )
+
+                        salmon_blocks = get_blocks_salmon(X_train.columns)
+
+                        if (len(salmon_blocks) - 1) == 4:
+                            modality_hidden_layer_sizes = [8, 4, 4, 8]
+                        elif (len(salmon_blocks) - 1) == 3 and (
+                            "mirna" not in available_modalities
+                            or "rppa" not in available_modalities
+                        ):
+                            modality_hidden_layer_sizes = [8, 4, 8]
+                        elif (
+                            len(salmon_blocks) - 1
+                        ) == 3 and "meth" not in available_modalities:
+                            modality_hidden_layer_sizes = [8, 4, 4]
+                        elif (len(salmon_blocks) - 1) == 2 and (
+                            "mirna" in available_modalities
+                            or "rppa" in available_modalities
+                        ):
+                            modality_hidden_layer_sizes = [8, 4]
+                        elif (len(salmon_blocks) - 1) == 2 and (
+                            "meth" in available_modalities
+                        ):
+                            modality_hidden_layer_sizes = [8, 8]
+                        elif len(salmon_blocks) - 1 == 1:
+                            modality_hidden_layer_sizes = [8]
+                        # print(X_train.columns)
+                        # print(X_train.shape)
+                        # print(modality_hidden_layer_sizes)
+                        # raise ValueError
+                        net = SKORCH_NET_FACTORY["salmon"](
+                            module=(SKORCH_MODULE_FACTORY[model_type]),
+                            criterion=(CRITERION_FACTORY["salmon"]),
+                            module__blocks=salmon_blocks,
+                            module__modality_hidden_layer_sizes=modality_hidden_layer_sizes,
+                            iterator_train__shuffle=True,
+                        )
+                        net.set_params(
+                            **HYPERPARAM_FACTORY["common_fixed_salmon"],
+                        )
+
+                        net.set_params(
+                            **{
+                                "train_split": StratifiedSkorchSurvivalSplit(
+                                    0.2,
+                                    stratified=True,
+                                    random_state=config.get("random_state"),
+                                ),
+                                "callbacks": [
+                                    (
+                                        "es",
+                                        EarlyStopping(
+                                            monitor="valid_loss",
+                                            patience=10,
+                                            load_best=True,
+                                        ),
+                                    ),
+                                    ("seed", FixSeed(generator=g)),
+                                ],
+                            }
+                        )
+                        hyperparams = HYPERPARAM_FACTORY["salmon_tuned"].copy()
+                        grid = RandomizedSearchCV(
+                            net,
+                            hyperparams,
+                            n_jobs=1,
+                            cv=StratifiedSurvivalKFold(
+                                n_splits=5,
+                                shuffle=True,
+                                random_state=config.get("random_state"),
+                            ),
+                            scoring=make_scorer(
+                                LOSS_FACTORY["cox"],
+                                greater_is_better=False,
+                            ),
+                            error_score=100,
+                            verbose=0,
+                            n_iter=50,
+                            random_state=42,
+                            # pre_dispatch=15,
+                        )
+
+                        try:
+                            grid.fit(X_train.to_numpy().astype(np.float32), y_train)
+                            success = True
+                        except ValueError as e:
+                            raise e
+                            success = False
+                        if model_type == "salmon" and success:
+                            # hm = grid.best_estimator_.predict(X_test.to_numpy().astype(np.float32))
+                            # print(hm)
+                            # raise ValueError
+                            survival_functions = (
+                                grid.best_estimator_.predict_survival_function(
+                                    X_test.to_numpy().astype(np.float32)
+                                )
+                            )
+                            survival_probabilities = np.stack(
+                                [
+                                    i(np.unique(np.abs(y_train)))
+                                    for i in survival_functions
+                                ]
+                            )
+
+                            sf_df = pd.DataFrame(
+                                survival_probabilities,
+                                columns=np.unique(np.abs(y_train)),
+                            )
+                        elif model_type == "eh" and success:
+                            try:
+                                sf_df = np.exp(
+                                    np.negative(
+                                        get_cumulative_hazard_function_eh(
+                                            None,
+                                            None,
+                                            y_train,
+                                            None,
+                                            grid.best_estimator_.predict(
+                                                X_train.to_numpy().astype(np.float32)
+                                            )
+                                            .detach()
+                                            .numpy(),
+                                            grid.best_estimator_.predict(
+                                                X_test.to_numpy().astype(np.float32)
+                                            )
+                                            .detach()
+                                            .numpy(),
+                                        )
+                                    )
+                                )
+                            except ValueError:
+                                sf_df = np.nan
+                        elif model_type == "discrete_time" and success:
+                            try:
+                                sf_df = grid.best_estimator_.predict_survival_function(
+                                    X_test.to_numpy().astype(np.float32), cuts
+                                )
+                            except ValueError:
+                                sf_df = np.nan
+                        else:
+                            sf_df = np.nan
+                        if np.any(np.isnan(sf_df)):
+                            time_km, survival_km = kaplan_meier_estimator(
+                                event_train.astype(bool),
+                                time_train,
+                            )
+                            sf_df = pd.DataFrame(
+                                [survival_km for i in range(X_test.shape[0])]
+                            )
+                            sf_df.columns = time_km
+
+                        pathlib.Path(
+                            f"./results_reproduced/survival_functions/transfer/{project}/{cancer}/{model_type}_{fusion}/"
+                        ).mkdir(parents=True, exist_ok=True)
+
+                        sf_df.to_csv(
+                            f"./results_reproduced/survival_functions/transfer/{project}/{cancer}/{model_type}_{fusion}/split_{outer_split}.csv",
+                            index=False,
+                        )
+
+    print("--- Python Environment ---")
+    print(f"Python Version: {sys.version}")
+    print(f"Python Executable: {sys.executable}")
+    print(
+        f"Operating System: {platform.system()} {platform.release()} ({platform.version()})"
+    )
+    print(f"Architecture: {platform.machine()}")
+    print(f"Node Name: {platform.node()}")
+    print(f"Current Working Directory: {os.getcwd()}")
+    print(f"Platform: {sys.platform}")  # More specific OS identifier
+    print(f"Processor: {platform.processor()}")
+    print("\n--- Installed Python Packages (pip freeze) ---")
+    try:
+        result = subprocess.run(
+            ["pip", "freeze"], capture_output=True, text=True, check=True
+        )
+        print(result.stdout)
+    except FileNotFoundError:
+        print("pip command not found. Make sure pip is installed and in your PATH.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running pip freeze: {e}")
+
+
+if __name__ == "__main__":
+    main()

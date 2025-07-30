@@ -12,7 +12,7 @@ Paper - Our manuscript is still under review.
 
 [Web service](https://survboard.science/)
 
-[Raw and preprocessed data, splits, and benchmark results](https://zenodo.org/records/11066227)
+[Raw and preprocessed data, splits, and benchmark results](https://doi.org/10.5281/zenodo.11066226)
 
 ### Reproduction guide
 To reproduce our results, first install the needed `R` and `python` packages:

@@ -1,6 +1,10 @@
 import argparse
 import json
 import os
+import subprocess
+import sys
+import platform
+
 from pathlib import Path
 
 import numpy as np
@@ -41,6 +45,23 @@ def main() -> int:
                 f"./data_reproduced/splits/{project}/{cancer}_test_splits.csv",
                 index=False,
             )
+    print("--- Python Environment ---")
+    print(f"Python Version: {sys.version}")
+    print(f"Python Executable: {sys.executable}")
+    print(f"Operating System: {platform.system()} {platform.release()} ({platform.version()})")
+    print(f"Architecture: {platform.machine()}")
+    print(f"Node Name: {platform.node()}")
+    print(f"Current Working Directory: {os.getcwd()}")
+    print(f"Platform: {sys.platform}") # More specific OS identifier
+    print(f"Processor: {platform.processor()}")
+    print("\n--- Installed Python Packages (pip freeze) ---")
+    try:
+        result = subprocess.run(['pip', 'freeze'], capture_output=True, text=True, check=True)
+        print(result.stdout)
+    except FileNotFoundError:
+        print("pip command not found. Make sure pip is installed and in your PATH.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running pip freeze: {e}")
     return 0
 
 

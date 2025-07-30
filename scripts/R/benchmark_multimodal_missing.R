@@ -15,6 +15,8 @@ suppressPackageStartupMessages({
   source(here::here("survboard", "R", "utils", "utils.R"))
 
 })
+# Seeding for reproducibility.
+set.seed(42)
 
 # Set up parallelisation option.
 future::plan("multicore", workers=25L)
@@ -26,16 +28,13 @@ config <- rjson::fromJSON(
 
 # Set up mlr3 pipelines.
 remove_constants <- po("removeconstants")
-encode <- po("encode", method = "treatment")
+encode <- po("encode", method = "one-hot")
 fix_factors <- po("fixfactors")
 impute_missing_prediction <- po("imputeoor", affect_columns = selector_type("factor"))
 impute <- po("imputeconstant", constant = 0, affect_columns = selector_grep("clinical"))
 impute_missing_blocks <- po("imputeconstant", constant = 0, affect_columns = selector_type("numeric"))
 pipe <- remove_constants %>>% fix_factors
 pipe_ohe <- pipe %>>% encode %>>% impute
-
-# Seeding for reproducibility.
-set.seed(42)
 
 # Model names to be reproduced.
 model_names <- c(
@@ -138,3 +137,5 @@ for (project in c("METABRIC", "TCGA", "ICGC", "TARGET")) {
     }
   }
 }
+
+sessionInfo()

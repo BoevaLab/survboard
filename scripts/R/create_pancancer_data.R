@@ -1,6 +1,8 @@
 library(dplyr)
 library(rjson)
 
+set.seed(42)
+
 config <- rjson::fromJSON(
   file = here::here(
     #"//Volumes",
@@ -19,6 +21,13 @@ incomplete_list <- list()
 for (cancer in config$tcga_cancers) {
   data <- vroom::vroom(
     here::here(
+      #"~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
+      #"survival_benchmark", 
+      #"//Volumes",
+      #"Backup",
+      #"transfer",
+      #"20231123",
+      #"survboard",
       "data_reproduced", "TCGA",
 
       paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
@@ -29,6 +38,13 @@ for (cancer in config$tcga_cancers) {
   
   data <- vroom::vroom(
     here::here(
+      #"~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
+      #"survival_benchmark", 
+      #"//Volumes",
+      #"Backup",
+      #"transfer",
+      #"20231123",
+      #"survboard",
       "data_reproduced", "TCGA",
       paste0(cancer, "_data_incomplete_modalities_preprocessed.csv", collapse = "")
     )
@@ -75,17 +91,40 @@ incomplete_pancancer_backup <- incomplete_pancancer
 
 
 library(readr)
+#colnames(complete_pancancer)[which(sapply(strsplit(colnames(complete_pancancer), "\\_"), function(x) x[[1]]) == "mutation")] <- paste0("mut_", sapply(strsplit(colnames(complete_pancancer)[which(sapply(strsplit(colnames(complete_pancancer), "\\_"), function(x) x[[1]]) == "mutation")], "\\_"), function(x) x[[2]]))
+#colnames(incomplete_pancancer)[which(sapply(strsplit(colnames(incomplete_pancancer), "\\_"), function(x) x[[1]]) == "mutation")] <- paste0("mut_", sapply(strsplit(colnames(incomplete_pancancer)[which(sapply(strsplit(colnames(incomplete_pancancer), "\\_"), function(x) x[[1]]) == "mutation")], "\\_"), function(x) x[[2]]))
+
 complete_pancancer <- data.frame(complete_pancancer, check.names = FALSE)
 incomplete_pancancer <- data.frame(incomplete_pancancer, check.names = FALSE)
 
+#complete_pancancer[, which(sapply(strsplit(colnames(complete_pancancer), "\\_"), function(x) x[[1]]) == "clinical")] <- complete_pancancer[, which(sapply(strsplit(colnames(complete_pancancer), "\\_"), function(x) x[[1]]) == "clinical")] %>% replace(is.na(.), ".MISSING")
+
+#incomplete_pancancer[, which(sapply(strsplit(colnames(incomplete_pancancer), "\\_"), function(x) x[[1]]) == "clinical")] <- incomplete_pancancer[, which(sapply(strsplit(colnames(incomplete_pancancer), "\\_"), function(x) x[[1]]) == "clinical")] %>% replace(is.na(.), ".MISSING")
+
 complete_pancancer %>% write_csv(
   here::here(
+    #"~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
+    #"survival_benchmark", 
+      #"//Volumes",
+      #"Backup",
+      #"transfer",
+      #"20231123",
+      #"survboard",
     "data_reproduced" , "TCGA", "pancancer_complete.csv"
   )
 )
 
 incomplete_pancancer %>% write_csv(
   here::here(
+    #"~", "boeva_lab_scratch", "data", "projects", "David", "Nikita_David_survival_benchmark",
+    #"survival_benchmark", 
+          #"//Volumes",
+      #"Backup",
+      #"transfer",
+      #"20231123",
+      #"survboard",
     "data_reproduced", "TCGA", "pancancer_incomplete.csv"
   )
 )
+
+sessionInfo()

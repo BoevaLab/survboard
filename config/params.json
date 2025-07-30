@@ -1,0 +1,28 @@
+{
+    "random_seed": 42,
+    "initial_lr": 0.001,
+    "max_epochs": 100,
+    "batch_size": 128,
+    "valid_split_size": 10,
+    "es_patience": 11,
+    "grid_iter": 25,
+    "p_multimodal_dropout": 0.25,
+    "hazard_fc_units": [
+        32,
+        1
+    ],
+    "fc_batchnorm": "True",
+    "fc_activation": [
+        "relu",
+        "None"
+    ],
+    "hazard_fc_last_layer_bias": "False",
+    "hazard_fc_layers": 2,
+    "fc_units": [
+        128,
+        64
+    ],
+    "fc_layers": 2,
+    "latent_dim": 64,
+    "schedule_patience": 3
+}

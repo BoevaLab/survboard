@@ -160,7 +160,9 @@ prepare_clinical_data <- function(clinical_raw, clinical_ext_raw, cancer, keep_p
       # remove any patients for which the OS endpoint is missing
       filter(!(is.na(OS) | is.na(OS.time))) %>%
       # remove any patients which were not at risk at the start of the study
-      filter(!(OS.time == 0))
+      filter(!(OS.time == 0)) %>%
+      # remove any patients for whom age is not available
+      filter(!is.na(age_at_initial_pathologic_diagnosis))
   }
   # Select out clinical covariates in question and recode
   # all missing data to `NA`.
@@ -168,14 +170,13 @@ prepare_clinical_data <- function(clinical_raw, clinical_ext_raw, cancer, keep_p
     filter(type == cancer) %>%
     dplyr::select(
       bcr_patient_barcode, OS, OS.time,
-      birth_days_to,
+      age_at_initial_pathologic_diagnosis,
       gender,
       race,
       ajcc_pathologic_tumor_stage,
       clinical_stage,
       histological_type
     ) %>%
-    mutate(birth_days_to = -(birth_days_to / 365.25)) %>%
     mutate(race = recode(race, `[Unknown]` = ".MISSING", `[Not Available]` = ".MISSING", `[Not Evaluated]` = ".MISSING")) %>%
     mutate(ajcc_pathologic_tumor_stage = recode(ajcc_pathologic_tumor_stage, `[Unknown]` = ".MISSING", `[Not Available]` = ".MISSING", `[Discrepancy]` = ".MISSING", `[Not Applicable]` = ".MISSING")) %>%
     mutate(clinical_stage = recode(clinical_stage, `[Not Available]` = ".MISSING", `[Discrepancy]` = ".MISSING", `[Not Applicable]` = ".MISSING")) %>%

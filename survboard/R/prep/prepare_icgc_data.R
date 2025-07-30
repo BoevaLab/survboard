@@ -253,6 +253,7 @@ prepare_icgc <- function(cancer, keep_non_primary_samples = FALSE, keep_patients
       tumor_stage = donor_tumour_stage_at_diagnosis,
       cancer_history_relative = cancer_history_first_degree_relative
     ) %>%
+    mutate(tumor_stage = paste0("stage", as.character(tumor_stage))) %>%
     dplyr::select(
       icgc_donor_id,
       OS,

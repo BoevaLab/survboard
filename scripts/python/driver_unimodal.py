@@ -2,10 +2,15 @@ import argparse
 import json
 import os
 import pathlib
+import platform
+import subprocess
+import sys
 
 import numpy as np
 import pandas as pd
+import torch
 from sklearn.compose import ColumnTransformer
+from sklearn.feature_selection import VarianceThreshold
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import make_pipeline
@@ -25,26 +30,42 @@ from survboard.python.utils.misc_utils import (
     StratifiedSurvivalKFold,
     get_blocks,
     get_cumulative_hazard_function_eh,
+    seed_torch,
     transform,
 )
 
 parser = argparse.ArgumentParser()
+
 parser.add_argument(
-    "--modalities",
+    "--project",
     type=str,
 )
 
+parser.add_argument(
+    "--cancer",
+    type=str,
+)
 
-def main(modalities):
+parser.add_argument(
+    "--split",
+    type=int,
+)
+
+
+def main(project: str, cancer: str, split: int):
+
     with open(os.path.join("./config/", "config.json"), "r") as f:
         config = json.load(f)
     g = np.random.default_rng(config.get("random_state"))
+    seed_torch(config.get("random_state"))
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
     fusion = "early"
-
+    all_sf_dfs_for_task = []
     for model_type in ["eh", "cox"]:
-        for modality in [modalities]:
-            for project in ["METABRIC", "TCGA", "ICGC", "TARGET"]:
-                for cancer in config[f"{project.lower()}_cancers"]:
+        for modality in ["clinical", "gex", "mirna", "meth", "rppa", "cnv", "mut"]:
+            for project in [project]:
+                for cancer in [cancer]:
                     if modality not in config[f"{project.lower()}_modalities"][cancer]:
                         continue
                     data_path = f"./data_reproduced/{project}/{cancer}_data_complete_modalities_preprocessed.csv"
@@ -61,6 +82,10 @@ def main(modalities):
                         ],
                     ]
                     data_helper = data.copy(deep=True).drop(columns=["OS_days", "OS"])
+                    constant_columns = data_helper.columns[data_helper.nunique() == 1]
+
+                    data_helper = data_helper.drop(columns=constant_columns)
+
                     train_splits = pd.read_csv(
                         os.path.join(
                             f"./data_reproduced/splits/{project}/{cancer}_train_splits.csv"
@@ -71,9 +96,15 @@ def main(modalities):
                             f"./data_reproduced/splits/{project}/{cancer}_test_splits.csv"
                         )
                     )
-                    for outer_split in range(
-                        config["outer_repetitions"] * config["outer_splits"]
-                    ):
+                    data = pd.concat(
+                        [
+                            data_helper,
+                            data.loc[:, (np.isin(data.columns, ["OS", "OS_days"]))],
+                        ],
+                        axis=1,
+                    )
+
+                    for outer_split in [split]:
                         train_ix = (
                             train_splits.iloc[outer_split, :]
                             .dropna()
@@ -95,6 +126,7 @@ def main(modalities):
 
                         X_train = X_train.drop(columns=["OS", "OS_days"])
                         X_test = X_test.drop(columns=["OS", "OS_days"])
+
                         if modality == "clinical":
                             ct = ColumnTransformer(
                                 [
@@ -184,7 +216,7 @@ def main(modalities):
                         grid = RandomizedSearchCV(
                             net,
                             HYPERPARAM_FACTORY["common_tuned"],
-                            n_jobs=15,
+                            n_jobs=1,
                             cv=StratifiedSurvivalKFold(
                                 n_splits=5,
                                 shuffle=True,
@@ -257,19 +289,68 @@ def main(modalities):
                                 [survival_km for i in range(X_test.shape[0])]
                             )
                             sf_df.columns = time_km
+                        # Add metadata columns to the sf_df to identify its origin
+                        sf_df["model_type"] = model_type
+                        sf_df["modality"] = modality
+                        sf_df["project"] = project
+                        sf_df["cancer"] = cancer
+                        sf_df["split"] = outer_split
 
-                        pathlib.Path(
-                            f"./results_reproduced/survival_functions/{modality}/{project}/{cancer}/{model_type}_{fusion}/"
-                        ).mkdir(parents=True, exist_ok=True)
+                        # Append the DataFrame to our list for later consolidation
+                        all_sf_dfs_for_task.append(sf_df)
+                # pathlib.Path(
+                #     f"./results_reproduced/survival_functions/{modality}/{project}/{cancer}/{model_type}_{fusion}/"
+                # ).mkdir(parents=True, exist_ok=True)
 
-                        sf_df.to_csv(
-                            f"./results_reproduced/survival_functions/{modality}/{project}/{cancer}/{model_type}_{fusion}/split_{outer_split}.csv",
-                            index=False,
-                        )
+                # sf_df.to_csv(
+                #     f"./results_reproduced/survival_functions/{modality}/{project}/{cancer}/{model_type}_{fusion}/split_{outer_split}.csv",
+                #     index=False,
+                # )
+
+    if all_sf_dfs_for_task:  # Ensure the list is not empty
+        consolidated_sf_df = pd.concat(all_sf_dfs_for_task, ignore_index=True)
+
+        # Define the output directory and filename for the consolidated CSV file
+        # The path now only needs to be unique per project/cancer/split
+        output_dir = pathlib.Path(
+            f"./results_reproduced/survival_functions_consolidated_csv/{project}/{cancer}/unimodal"
+        )
+        output_dir.mkdir(parents=True, exist_ok=True)  # Ensure the directory exists
+
+        # Save the consolidated DataFrame as a CSV file
+        # The filename now includes the split, project, and cancer, making it unique per job
+        output_file_path = output_dir / f"split_{split}.csv"
+        consolidated_sf_df.to_csv(output_file_path, index=False)  # Changed to .to_csv
+        print(
+            f"Saved consolidated results for {project}/{cancer}/split_{split} to {output_file_path}"
+        )
+    else:
+        print(
+            f"No data generated for {project}/{cancer}/split_{split}. No CSV file saved."
+        )
+    print("--- Python Environment ---")
+    print(f"Python Version: {sys.version}")
+    print(f"Python Executable: {sys.executable}")
+    print(
+        f"Operating System: {platform.system()} {platform.release()} ({platform.version()})"
+    )
+    print(f"Architecture: {platform.machine()}")
+    print(f"Node Name: {platform.node()}")
+    print(f"Current Working Directory: {os.getcwd()}")
+    print(f"Platform: {sys.platform}")  # More specific OS identifier
+    print(f"Processor: {platform.processor()}")
+    print("\n--- Installed Python Packages (pip freeze) ---")
+    try:
+        result = subprocess.run(
+            ["pip", "freeze"], capture_output=True, text=True, check=True
+        )
+        print(result.stdout)
+    except FileNotFoundError:
+        print("pip command not found. Make sure pip is installed and in your PATH.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running pip freeze: {e}")
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main(
-        args.modalities,
-    )
+    main(args.project, args.cancer, args.split)

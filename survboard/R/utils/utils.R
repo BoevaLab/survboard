@@ -58,6 +58,8 @@ transform_cox_model <- function(coefficients, data, target) {
   # Initialize Cox model at the coefficient estimates - we don't actually
   # fit the model here, since we are only interested in using `coxph` with
   # `pec` to easily produce survival function estimates.
+  print(length(coefficients))
+  print(dim(train_matrix))
   cox_helper <- coxph(Surv(OS_days, OS) ~ ., x = TRUE, init = coefficients, iter.max = 0, data = data.frame(train_matrix))
   return(cox_helper)
 }
