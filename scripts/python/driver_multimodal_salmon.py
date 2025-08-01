@@ -17,6 +17,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from skorch.callbacks import EarlyStopping
 from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.skorch_infra import FixSeed
 from survboard.python.utils.factories import (
@@ -25,7 +26,7 @@ from survboard.python.utils.factories import (
     LOSS_FACTORY,
     SKORCH_NET_FACTORY,
 )
-from survboard.python.utils.misc_utils import (  # get_blocks_gdp,
+from survboard.python.utils.misc_utils import (
     StratifiedSkorchSurvivalSplit,
     StratifiedSurvivalKFold,
     get_blocks_salmon,
@@ -62,10 +63,6 @@ def main(
         for model_type in ["salmon"]:
             for project in [project]:
                 for cancer in [cancer]:
-                    # print(fusion)
-                    # print(cancer)
-                    # print(project)
-                    # print(model_type)
                     data = pd.read_csv(
                         f"./data_reproduced/{project}/{cancer}_salmon_preprocessed.csv",
                         low_memory=False,
@@ -86,7 +83,6 @@ def main(
                         config["outer_repetitions"] * config["outer_splits"]
                     ):
 
-                        # print(f"Split: {outer_split+1}/25 starting")
                         train_ix = (
                             train_splits.iloc[outer_split, :]
                             .dropna()
@@ -96,7 +92,6 @@ def main(
                             test_splits.iloc[outer_split, :].dropna().values.astype(int)
                         )
                         X_test = data.iloc[test_ix, :].reset_index(drop=True)
-                        # print(data.columns)
                         X_train = (
                             data.iloc[train_ix, :]
                             .sort_values(by="OS_days", ascending=True)
@@ -158,8 +153,6 @@ def main(
                         )
 
                         salmon_blocks = get_blocks_salmon(X_train.columns)
-                        # print(len(salmon_blocks))
-                        # print(available_modalities)
                         if (len(salmon_blocks) - 1) == 4:
                             modality_hidden_layer_sizes = [8, 4, 4, 8]
                         elif (len(salmon_blocks) - 1) == 3 and (
@@ -182,10 +175,6 @@ def main(
                             modality_hidden_layer_sizes = [8, 8]
                         elif len(salmon_blocks) - 1 == 1:
                             modality_hidden_layer_sizes = [8]
-                        # print(X_train.columns)
-                        # print(X_train.shape)
-                        # print(modality_hidden_layer_sizes)
-                        # raise ValueError
                         net = SKORCH_NET_FACTORY["salmon"](
                             module=(SKORCH_MODULE_FACTORY[model_type]),
                             criterion=(CRITERION_FACTORY["salmon"]),
@@ -235,7 +224,6 @@ def main(
                             verbose=0,
                             n_iter=50,
                             random_state=42,
-                            # pre_dispatch=15,
                         )
 
                         try:
@@ -245,9 +233,6 @@ def main(
                             raise e
                             success = False
                         if model_type == "salmon" and success:
-                            # hm = grid.best_estimator_.predict(X_test.to_numpy().astype(np.float32))
-                            # print(hm)
-                            # raise ValueError
                             survival_functions = (
                                 grid.best_estimator_.predict_survival_function(
                                     X_test.to_numpy().astype(np.float32)

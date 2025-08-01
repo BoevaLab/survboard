@@ -1,5 +1,3 @@
-.libPaths(c("/cluster/customapps/biomed/boeva/dwissel/4.2", .libPaths()))
-
 #' Helper function to rerun our complete preprocessing in R, which encompasses
 #' both the TCGA and the ICGC projects.
 #' NB: Our splits assume `keep_non_primary_samples` = FALSE and

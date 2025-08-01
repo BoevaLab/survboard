@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+snakemake --rerun-incomplete
+
 Rscript ./scripts/R/benchmark_unimodal.R
 Rscript ./scripts/R/benchmark_pancan.R
 Rscript ./scripts/R/benchmark_multimodal_missing.R
@@ -10,8 +12,7 @@ for modalities in "clinical" "mirna" "rppa" "gex" "mut" "meth" "cnv"; do
     python ./scripts/python/driver_unimodal.py --modalities $modalities
 done
 
-python ./scripts/python/driver_multimodal_all.py
-python ./scripts/python/driver_multimodal_clinical_gex.py
+cancer="BRCA"
 
 for split in {1..25}; do
   python ./scripts/python/driver_unimodal.py --project METABRIC --cancer BRCA --split $split
@@ -20,16 +21,15 @@ for split in {1..25}; do
   python ./scripts/python/driver_multimodal_all_revisions.py --project METABRIC --cancer $cancer --split $split
 done
 
-Rscript make_salmon_data_non_split.R METABRIC $cancer
+Rscript ./scripts/R/make_salmon_data_non_split.R METABRIC $cancer
 python ./scripts/python/driver_clinical_gex_salmon.py --project METABRIC --cancer $cancer
 python ./scripts/python/driver_multimodal_salmon.py --project METABRIC --cancer $cancer
-Rscript scripts/R/run_denoising_ae_full.R METABRIC $cancer
-Rscript scripts/R/run_denoising_ae_clinical_gex.R METABRIC $cancer
+Rscript ./scripts/R/run_denoising_ae_full.R METABRIC $cancer
+Rscript ./scripts/R/run_denoising_ae_clinical_gex.R METABRIC $cancer
 python ./scripts/python/driver_multimodal_customics.py --project METABRIC --cancer $cancer
 python ./scripts/python/driver_clinical_gex_customics.py --project METABRIC --cancer $cancer
 python ./scripts/python/driver_clinical_gex_multimodal_survival_pred.py --project $METABRIC --cancer $cancer
 python ./scripts/python/driver_multimodal_multimodal_survival_pred.py --project $METABRIC --cancer $cancer
-
 python ./scripts/python/driver_clinical_gex_gdp.py --project METABRIC --cancer $cancer
 python ./scripts/python/driver_multimodal_gdp_fixed.py --project METABRIC --cancer $cancer
 python ./scripts/python/driver_clinical_gex_survival_net.py --project METABRIC --cancer $cancer
@@ -42,16 +42,15 @@ for cancer in "CLLE-ES" "PACA-AU" "PACA-CA" "LIRI-JP"; do
         python ./scripts/python/driver_clinical_gex_revisions.py --project ICGC --cancer $cancer --split $split
         python ./scripts/python/driver_multimodal_all_revisions.py --project ICGC --cancer $cancer --split $split
     done
-    Rscript make_salmon_data_non_split.R ICGC $cancer
+    Rscript ./make_salmon_data_non_split.R ICGC $cancer
     python ./scripts/python/driver_clinical_gex_salmon.py --project ICGC --cancer $cancer
     python ./scripts/python/driver_multimodal_salmon.py --project ICGC --cancer $cancer
-    Rscript scripts/R/run_denoising_ae_full.R ICGC $cancer
-    Rscript scripts/R/run_denoising_ae_clinical_gex.R ICGC $cancer
+    Rscript ./scripts/R/run_denoising_ae_full.R ICGC $cancer
+    Rscript ./scripts/R/run_denoising_ae_clinical_gex.R ICGC $cancer
     python ./scripts/python/driver_multimodal_customics.py --project ICGC --cancer $cancer
     python ./scripts/python/driver_clinical_gex_customics.py --project ICGC --cancer $cancer
     python ./scripts/python/driver_clinical_gex_multimodal_survival_pred.py --project $ICGC --cancer $cancer
     python ./scripts/python/driver_multimodal_multimodal_survival_pred.py --project $ICGC --cancer $cancer
-
     python ./scripts/python/driver_clinical_gex_gdp.py --project ICGC --cancer $cancer
     python ./scripts/python/driver_multimodal_gdp_fixed.py --project ICGC --cancer $cancer
     python ./scripts/python/driver_clinical_gex_survival_net.py --project ICGC --cancer $cancer
@@ -65,16 +64,15 @@ for cancer in "WT" "ALL"; do
         python ./scripts/python/driver_clinical_gex_revisions.py --project TARGET --cancer $cancer --split $split
         python ./scripts/python/driver_multimodal_all_revisions.py --project TARGET --cancer $cancer --split $split
     done
-    Rscript make_salmon_data_non_split.R TARGET $cancer
+    Rscript ./scripts/R/make_salmon_data_non_split.R TARGET $cancer
     python ./scripts/python/driver_clinical_gex_salmon.py --project TARGET --cancer $cancer
     python ./scripts/python/driver_multimodal_salmon.py --project TARGET --cancer $cancer
-    Rscript scripts/R/run_denoising_ae_full.R TARGET $cancer
-    Rscript scripts/R/run_denoising_ae_clinical_gex.R TARGET $cancer
+    Rscript ./scripts/R/run_denoising_ae_full.R TARGET $cancer
+    Rscript ./scripts/R/run_denoising_ae_clinical_gex.R TARGET $cancer
     python ./scripts/python/driver_multimodal_customics.py --project TARGET --cancer $cancer
     python ./scripts/python/driver_clinical_gex_customics.py --project TARGET --cancer $cancer
     python ./scripts/python/driver_clinical_gex_multimodal_survival_pred.py --project $TARGET --cancer $cancer
     python ./scripts/python/driver_multimodal_multimodal_survival_pred.py --project $TARGET --cancer $cancer
-
     python ./scripts/python/driver_clinical_gex_gdp.py --project TARGET --cancer $cancer
     python ./scripts/python/driver_multimodal_gdp_fixed.py --project TARGET --cancer $cancer
     python ./scripts/python/driver_clinical_gex_survival_net.py --project TARGET --cancer $cancer
@@ -89,16 +87,15 @@ for cancer in "BLCA" "BRCA" "COAD" "ESCA" "HNSC" "KIRC" "KIRP" "LGG" "LUAD" "PAA
         python ./scripts/python/driver_clinical_gex_revisions.py --project TCGA --cancer $cancer --split $split
         python ./scripts/python/driver_multimodal_all_revisions.py --project TCGA --cancer $cancer --split $split
     done
-    Rscript make_salmon_data_non_split.R TCGA $cancer
+    Rscript ./scripts/R/make_salmon_data_non_split.R TCGA $cancer
     python ./scripts/python/driver_clinical_gex_salmon.py --project TCGA --cancer $cancer
     python ./scripts/python/driver_multimodal_salmon.py --project TCGA --cancer $cancer
-    Rscript scripts/R/run_denoising_ae_full.R TCGA $cancer
-    Rscript scripts/R/run_denoising_ae_clinical_gex.R TCGA $cancer
+    Rscript ./scripts/R/run_denoising_ae_full.R TCGA $cancer
+    Rscript ./scripts/R/run_denoising_ae_clinical_gex.R TCGA $cancer
     python ./scripts/python/driver_multimodal_customics.py --project TCGA --cancer $cancer
     python ./scripts/python/driver_clinical_gex_customics.py --project TCGA --cancer $cancer
     python ./scripts/python/driver_clinical_gex_multimodal_survival_pred.py --project $TCGA --cancer $cancer
     python ./scripts/python/driver_multimodal_multimodal_survival_pred.py --project $TCGA --cancer $cancer
-
     python ./scripts/python/driver_clinical_gex_gdp.py --project TCGA --cancer $cancer
     python ./scripts/python/driver_multimodal_gdp_fixed.py --project TCGA --cancer $cancer
     python ./scripts/python/driver_clinical_gex_survival_net.py --project TCGA --cancer $cancer
@@ -109,4 +106,16 @@ for split in {1..25}; do
     python ./scripts/python/driver_pancan.py --split $split
 done
 
-snakemake --rerun-incomplete
+Rscript ./scripts/R/run_denosing_ae_transfer.R
+python ./scripts/R/make_salmon_data_transfer.R
+python ./scripts/python/driver_transfer_survival_net.py
+python ./scripts/python/driver_transfer_customics.py
+python ./scripts/python/driver_transfer_gdp.py
+python ./scripts/python/driver_transfer_multimodal_survival_pred.py
+python ./scripts/python/driver_transfer_salmon.py
+
+for model_type in "cox" "eh"; do
+    for fusion_choice in "late_mean" "intermediate_concat"; do
+        python ./scripts/python/driver_multimodal_clinical_gex_transfer.py --fusion_choice $fusion_choice --model_type $model_type
+    done
+done

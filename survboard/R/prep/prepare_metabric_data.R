@@ -146,16 +146,6 @@ prepare_metabric <- function() {
   mut <- prepare_mutation(mut_master)
   meth <- prepare_meth(meth[, -2])
   
-  
-  meth[1:3, 1:3]
-  
-  # CNV is complete
-  # GEX is complete
-  
-  # Mut is incomplete
-  
-  # Meth is incomplete
-  
   joint_patients <- Reduce(intersect, list(clinical$patient_id, colnames(cnv), colnames(gex), colnames(mut), colnames(meth)))
   missing_patients <- setdiff(clinical$patient_id, joint_patients)
   

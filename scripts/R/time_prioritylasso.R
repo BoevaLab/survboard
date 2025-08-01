@@ -2,7 +2,6 @@ log <- file(snakemake@log[[1]], open = "wt")
 sink(log, type = "output")
 sink(log, type = "message")
 
-.libPaths(c("/cluster/customapps/biomed/boeva/dwissel/4.2", .libPaths()))
 suppressPackageStartupMessages({
   library(mlr3)
   library(mlr3pipelines)

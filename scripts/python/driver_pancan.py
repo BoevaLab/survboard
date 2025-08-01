@@ -16,6 +16,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from skorch.callbacks import EarlyStopping
 from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.skorch_infra import FixSeed
 from survboard.python.utils.factories import (
@@ -276,29 +277,17 @@ def main(split: int):
                 sf_df["cancer"] = cancer
                 sf_df["split"] = outer_split
                 all_sf_dfs_for_task.append(sf_df)
-                # pathlib.Path(
-                #     f"./results_reproduced/survival_functions/clinical_gex_pancan/{project}/{model_type}_{fusion}/"
-                # ).mkdir(parents=True, exist_ok=True)
 
-                # sf_df.to_csv(
-                #     f"./results_reproduced/survival_functions/clinical_gex_pancan/{project}/{model_type}_{fusion}/split_{outer_split}.csv",
-                #     index=False,
-                # )
-
-    if all_sf_dfs_for_task:  # Ensure the list is not empty
+    if all_sf_dfs_for_task:
         consolidated_sf_df = pd.concat(all_sf_dfs_for_task, ignore_index=True)
 
-        # Define the output directory and filename for the consolidated CSV file
-        # The path now only needs to be unique per project/cancer/split
         output_dir = pathlib.Path(
             f"./results_reproduced/survival_functions_consolidated_csv/{project}/{cancer}/pancancer"
         )
-        output_dir.mkdir(parents=True, exist_ok=True)  # Ensure the directory exists
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save the consolidated DataFrame as a CSV file
-        # The filename now includes the split, project, and cancer, making it unique per job
         output_file_path = output_dir / f"split_{split}.csv"
-        consolidated_sf_df.to_csv(output_file_path, index=False)  # Changed to .to_csv
+        consolidated_sf_df.to_csv(output_file_path, index=False)
         print(
             f"Saved consolidated results for {project}/{cancer}/split_{split} to {output_file_path}"
         )

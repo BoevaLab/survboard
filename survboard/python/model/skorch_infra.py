@@ -4,6 +4,7 @@ from skorch.callbacks import Callback
 from skorch.net import NeuralNet
 from skorch.utils import to_tensor
 from sksurv.linear_model.coxph import BreslowEstimator
+
 from survboard.python.utils.misc_utils import (
     InterpolateLogisticHazard,
     seed_torch,
@@ -93,8 +94,6 @@ class CoxPHNeuralNet(BaseSurvivalNet):
         self.train_time = time
         self.train_event = event
         self.partial_fit(X, y, **fit_params)
-        #print("done fitting")
-        #print("fitting breslow")
         self.fit_breslow(
             torch.clamp(self.module_.forward(torch.tensor(X)), -75, 75)
             .detach()
@@ -181,18 +180,8 @@ class DiscreteTimeNeuralNet(BaseSurvivalNet):
             sub=sub,
             epsilon=epsilon,
         )
-        # surv = self.predict_surv(X)
-        # surv = pd.DataFrame(surv, columns=duration_index)
         surv = interpol.predict_surv_df(X)
         return surv
-
-    # def get_loss(self, y_pred, y_true, X=None, training=False):
-    #     y_true = to_tensor(y_true, device=self.device)
-    #     return self.criterion_(
-    #         y_pred,
-    #         y_true,
-    #         self.module_.times,
-    #     )
 
     def predict_hazard(
         self,
@@ -229,18 +218,8 @@ class DiscreteTimeNeuraSGLNet(BaseSurvivalSGLNet):
             sub=sub,
             epsilon=epsilon,
         )
-        # surv = self.predict_surv(X)
-        # surv = pd.DataFrame(surv, columns=duration_index)
         surv = interpol.predict_surv_df(X)
         return surv
-
-    # def get_loss(self, y_pred, y_true, X=None, training=False):
-    #     y_true = to_tensor(y_true, device=self.device)
-    #     return self.criterion_(
-    #         y_pred,
-    #         y_true,
-    #         self.module_.times,
-    #     )
 
     def predict_hazard(
         self,

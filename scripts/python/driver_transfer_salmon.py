@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import pathlib
@@ -17,6 +16,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from skorch.callbacks import EarlyStopping
 from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.skorch_infra import FixSeed
 from survboard.python.utils.factories import (
@@ -25,7 +25,7 @@ from survboard.python.utils.factories import (
     LOSS_FACTORY,
     SKORCH_NET_FACTORY,
 )
-from survboard.python.utils.misc_utils import (  # get_blocks_gdp,
+from survboard.python.utils.misc_utils import (
     StratifiedSkorchSurvivalSplit,
     StratifiedSurvivalKFold,
     get_blocks_salmon,
@@ -82,7 +82,6 @@ def main():
                         X_test = data_test.reset_index(drop=True).drop(
                             columns=["OS", "OS_days"]
                         )
-                        # print(f"Split: {outer_split+1}/25 starting")
                         train_ix = (
                             train_splits.iloc[outer_split, :]
                             .dropna()
@@ -170,10 +169,6 @@ def main():
                             modality_hidden_layer_sizes = [8, 8]
                         elif len(salmon_blocks) - 1 == 1:
                             modality_hidden_layer_sizes = [8]
-                        # print(X_train.columns)
-                        # print(X_train.shape)
-                        # print(modality_hidden_layer_sizes)
-                        # raise ValueError
                         net = SKORCH_NET_FACTORY["salmon"](
                             module=(SKORCH_MODULE_FACTORY[model_type]),
                             criterion=(CRITERION_FACTORY["salmon"]),
@@ -223,19 +218,14 @@ def main():
                             verbose=0,
                             n_iter=50,
                             random_state=42,
-                            # pre_dispatch=15,
                         )
 
                         try:
                             grid.fit(X_train.to_numpy().astype(np.float32), y_train)
                             success = True
                         except ValueError as e:
-                            raise e
                             success = False
                         if model_type == "salmon" and success:
-                            # hm = grid.best_estimator_.predict(X_test.to_numpy().astype(np.float32))
-                            # print(hm)
-                            # raise ValueError
                             survival_functions = (
                                 grid.best_estimator_.predict_survival_function(
                                     X_test.to_numpy().astype(np.float32)

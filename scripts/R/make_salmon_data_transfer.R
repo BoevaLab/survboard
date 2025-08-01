@@ -1,7 +1,3 @@
-log <- file(snakemake@log[[1]], open = "wt")
-sink(log, type = "output")
-sink(log, type = "message")
-
 suppressPackageStartupMessages({
   library(lmQCM)
   library(vroom)
@@ -115,38 +111,77 @@ transform_matrix_salmon <- function(data) {
   return(transformed_matrix)
 }
 
-options <- commandArgs(trailingOnly = TRUE)
 
-for (project in c("TCGA")) {
-  for (cancer in c(snakemake@wildcards[["cancer"]])) {
-    set.seed(42)
-    # Read in complete modality sample dataset.
-    data <- vroom::vroom(
-      here::here(
-        "data_reproduced", project,
-        paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
+
+for (project in c("validation")) {
+  for (cancer in c("PAAD", "LIHC")) {
+    target_dir <- paste0("results_reproduced/survival_functions/transfer/", "validation", "/", cancer, "/", "multimodal_nsclc")
+    if (!dir.exists(target_dir)) {
+      print(target_dir)
+      dir.create(target_dir)
+    }
+    if (cancer == "PAAD") {
+      # Read in complete modality sample dataset.
+      data_input <- vroom::vroom(
+        here::here(
+          "data_reproduced", project,
+          cancer,
+          "icgc_paca_ca.csv"
+        )
       )
-    )
-    # Remove patient_id column and explicitly cast character columns as strings.
-    data <- data.frame(data[, -which("patient_id" == colnames(data))]) %>%
-      mutate(across(where(is.character), as.factor))
 
-    modalities <- sapply(strsplit(colnames(data), "\\_"), function(x) x[[1]])
-    data <- data[, modalities %in% c("OS", "clinical", "gex")]
+      data_transfer_to <- vroom::vroom(
+        here::here(
+          "data_reproduced", project,
+          cancer,
+          "tcga_paad.csv"
+        )
+      )
+      data_transfer_to$clinical_tumor_stage <- as.factor(data_transfer_to$clinical_tumor_stage)
+      data_transfer_to$clinical_gender <- as.factor(data_transfer_to$clinical_gender)
 
+      data_input$clinical_tumor_stage <- as.factor(data_input$clinical_tumor_stage)
+      data_input$clinical_gender <- as.factor(data_input$clinical_gender)
+
+      split_project <- "ICGC"
+      split_cancer <- "PACA-CA"
+    } else {
+      data_input <- vroom::vroom(
+        here::here(
+          "data_reproduced", project,
+          cancer,
+          "tcga_lihc.csv"
+        )
+      )
+
+      data_transfer_to <- vroom::vroom(
+        here::here(
+          "data_reproduced", project,
+          cancer,
+          "icgc_liri_jp.csv"
+        )
+      )
+      data_transfer_to$clinical_stage <- as.factor(data_transfer_to$clinical_stage)
+      data_transfer_to$clinical_gender <- as.factor(data_transfer_to$clinical_gender)
+
+      data_input$clinical_stage <- as.factor(data_input$clinical_stage)
+      data_input$clinical_gender <- as.factor(data_input$clinical_gender)
+      split_project <- "TCGA"
+      split_cancer <- "LIHC"
+    }
+
+    data <- rbind(data_input, data_transfer_to)
     label <- data[, c(which("OS" == colnames(data)), which("OS_days" == colnames(data)))]
     data <- data[, -c(which("OS" == colnames(data)), which("OS_days" == colnames(data)))]
 
     transformed_data <- transform_matrix_salmon(data)
     finalized <- cbind(label, transformed_data)
 
-    write.table(data.frame(), file = here::here(
-      "results_reproduced", "timings", paste0("make_salmon_data_", snakemake@wildcards[["cancer"]])
-    ), col.names = FALSE)
+    finalized %>% write_tsv(
+      here::here(
+        "data_reproduced", project,
+        paste0(cancer, "_salmon_preprocessed.csv", collapse = "")
+      )
+    )
   }
 }
-
-sessionInfo()
-
-sink()
-sink()

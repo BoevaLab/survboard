@@ -18,6 +18,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.utils import parallel_backend
 from skorch.callbacks import EarlyStopping
 from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.skorch_infra import FixSeed
 from survboard.python.utils.factories import (
@@ -26,14 +27,13 @@ from survboard.python.utils.factories import (
     LOSS_FACTORY,
     SKORCH_NET_FACTORY,
 )
-from survboard.python.utils.misc_utils import (  # get_blocks_gdp,
+from survboard.python.utils.misc_utils import (
     StratifiedSkorchSurvivalSplit,
     StratifiedSurvivalKFold,
     get_blocks,
     get_cumulative_hazard_function_eh,
     seed_torch,
     transform,
-    transform_discrete_time,
 )
 
 parser = argparse.ArgumentParser()
@@ -148,10 +148,7 @@ def main(project: str, cancer: str, split: int):
                         [
                             (
                                 "numerical",
-                                make_pipeline(
-                                    # VarianceThreshold(threshold=0.01),
-                                    StandardScaler()
-                                ),
+                                make_pipeline(StandardScaler()),
                                 np.where(data_overall_vars.dtypes != "object")[0],
                             ),
                             (
@@ -201,7 +198,6 @@ def main(project: str, cancer: str, split: int):
                         )
                     )
                     for outer_split in [split]:
-                        # print(f"Split: {outer_split+1}/25 starting")
                         train_ix = (
                             train_splits.iloc[outer_split, :]
                             .dropna()
@@ -225,7 +221,6 @@ def main(project: str, cancer: str, split: int):
                         X_test = X_test.drop(columns=["OS", "OS_days"])
                         y_train = transform(time_train, event_train)
 
-                        # print(X_train.shape)
                         if fusion == "early":
                             factory_model_type = f"{model_type}_sgl"
                         else:
@@ -237,16 +232,9 @@ def main(project: str, cancer: str, split: int):
                             module__blocks=get_blocks(X_train.columns),
                             iterator_train__shuffle=True,
                         )
-                        print("BLOCKS SELECTED")
                         net.set_params(
                             **HYPERPARAM_FACTORY["common_fixed_gdp"],
                         )
-                        # net.initialize()
-                        # pytorch_total_params = sum(p.numel() for p in net.module_.parameters())
-                        # print(net.module_)
-                        # print(pytorch_total_params)
-                        # print(X_train.shape)
-                        # raise ValueError
 
                         net.set_params(
                             **{
@@ -269,8 +257,6 @@ def main(project: str, cancer: str, split: int):
                             }
                         )
                         hyperparams = HYPERPARAM_FACTORY["gdp_tuned"].copy()
-                        # hyperparams.update(HYPERPARAM_FACTORY["gdp_tuned"])
-                        # print(hyperparams)
                         grid = RandomizedSearchCV(
                             net,
                             hyperparams,
@@ -288,22 +274,14 @@ def main(project: str, cancer: str, split: int):
                             verbose=0,
                             n_iter=50,
                             random_state=42,
-                            # pre_dispatch=15
                         )
 
                         try:
-                            # with parallel_backend(backend="threading", n_jobs=15):
                             grid.fit(X_train.to_numpy().astype(np.float32), y_train)
                             success = True
-                            # print(f"Split: {outer_split+1}/25 done")
-                            # raise ValueError
                         except ValueError as e:
-                            # raise e
                             success = False
                         if model_type == "gdp" and success:
-                            # hm = grid.best_estimator_.predict(X_test.to_numpy().astype(np.float32))
-                            # print(hm)
-                            # raise ValueError
                             survival_functions = (
                                 grid.best_estimator_.predict_survival_function(
                                     X_test.to_numpy().astype(np.float32)

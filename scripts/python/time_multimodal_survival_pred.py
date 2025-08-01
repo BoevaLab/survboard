@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import pathlib
@@ -15,6 +14,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 from sksurv.linear_model.coxph import BreslowEstimator
+
 from survboard.python.model.multimodal_survival_pred import (
     Model,
     MyDataset,
@@ -22,7 +22,7 @@ from survboard.python.model.multimodal_survival_pred import (
     get_dataloaders,
     setup_seed,
 )
-from survboard.python.utils.misc_utils import seed_torch  # get_blocks_gdp,
+from survboard.python.utils.misc_utils import seed_torch
 
 modality_remapping = {
     "clinical": "clinical",
@@ -119,10 +119,7 @@ with open(snakemake.log[0], "w") as f:
                         [
                             (
                                 "numerical",
-                                make_pipeline(
-                                    # VarianceThreshold(threshold=0.01),
-                                    MinMaxScaler()
-                                ),
+                                make_pipeline(MinMaxScaler()),
                                 np.where(data_overall_vars.dtypes != "object")[0],
                             ),
                             (

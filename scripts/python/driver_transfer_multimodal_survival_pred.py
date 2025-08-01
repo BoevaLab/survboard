@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import pathlib
@@ -12,12 +11,11 @@ import torch
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.metrics import make_scorer
-from sklearn.model_selection import RandomizedSearchCV, train_test_split
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, StandardScaler
-from skorch.callbacks import EarlyStopping
+from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 from sksurv.linear_model.coxph import BreslowEstimator
-from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.multimodal_survival_pred import (
     Model,
@@ -26,7 +24,7 @@ from survboard.python.model.multimodal_survival_pred import (
     get_dataloaders,
     setup_seed,
 )
-from survboard.python.utils.misc_utils import seed_torch  # get_blocks_gdp,
+from survboard.python.utils.misc_utils import seed_torch
 
 modality_remapping = {
     "clinical": "clinical",
@@ -78,10 +76,6 @@ def main():
                         predict_data_path = (
                             f"./data_reproduced/validation/{cancer}/icgc_liri_jp.csv"
                         )
-                    # print(fusion)
-                    # print(cancer)
-                    # print(project)
-                    # print(model_type)
 
                     train_data_full = pd.read_csv(
                         os.path.join(train_data_full_path),
@@ -147,10 +141,7 @@ def main():
                         [
                             (
                                 "numerical",
-                                make_pipeline(
-                                    # VarianceThreshold(threshold=0.01),
-                                    MinMaxScaler()
-                                ),
+                                make_pipeline(MinMaxScaler()),
                                 np.where(data_overall_vars.dtypes != "object")[0],
                             ),
                             (
@@ -271,19 +262,6 @@ def main():
                             test_sampler,
                             BATCH_SIZE,
                         )
-                        # Create survival model
-                        # print(
-                        #     {
-                        #         f"{modality_remapping[i]}": np.sum(
-                        #             pd.Series(data_finalized.columns)
-                        #             .str.rsplit("_")
-                        #             .apply(lambda x: x[0])
-                        #             .values
-                        #             == f"{i}"
-                        #         )
-                        #         for i in available_modalities
-                        #     }
-                        # )
                         survmodel = Model(
                             modalities=[
                                 modality_remapping[i] for i in available_modalities
@@ -337,7 +315,6 @@ def main():
                             hazard, representation = out
                             train_event += event.detach().numpy().tolist()
                             train_time += time.detach().numpy().tolist()
-                            # print(hazard)
                             train_hazard += hazard["hazard"].detach().numpy().tolist()
 
                         for data, data_label in dataloaders["val"]:
@@ -345,7 +322,6 @@ def main():
                             hazard, representation = out
                             train_event += event.detach().numpy().tolist()
                             train_time += time.detach().numpy().tolist()
-                            # print(hazard)
                             train_hazard += hazard["hazard"].detach().numpy().tolist()
 
                         for data, data_label in dataloaders["test"]:
@@ -353,7 +329,6 @@ def main():
                             hazard, representation = out
                             test_event += event.detach().numpy().tolist()
                             test_time += time.detach().numpy().tolist()
-                            # print(hazard)
                             test_hazard += hazard["hazard"].detach().numpy().tolist()
                         be = BreslowEstimator()
                         be.fit(

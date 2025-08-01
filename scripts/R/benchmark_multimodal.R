@@ -1,4 +1,3 @@
-.libPaths(c("/cluster/customapps/biomed/boeva/dwissel/4.2", .libPaths()))
 suppressPackageStartupMessages({
   library(mlr3)
   library(mlr3pipelines)
@@ -71,12 +70,6 @@ learners <- list(
 for (project in c("METABRIC", "TCGA", "ICGC", "TARGET")) {
   # Iterate over all cancers in the project.
   for (cancer in config[[paste0(tolower(project), "_cancers")]]) {
-    if (project == "METABRIC") {
-    	next
-    }
-    if (project == "TCGA" & (cancer == "BLCA" | cancer == "BRCA" | cancer == "COAD")) {
-    next
-    }
     set.seed(42)
     # Read in complete modality sample dataset.
     data <- vroom::vroom(

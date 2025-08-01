@@ -1,4 +1,5 @@
 import torch
+
 from survboard.python.utils.factories import FUSION_FACTORY
 from survboard.python.utils.misc_utils import (
     calculate_log_hazard_input_size,
@@ -33,9 +34,6 @@ class HazardRegression(torch.nn.Module):
         self.hazard = torch.nn.Sequential(*hazard)
 
     def forward(self, x):
-        #print(self.hazard(x))
-        #print(x.shape)
-        #print(self.hazard)
         return torch.clamp(self.hazard(x), -75, 75)
 
 
@@ -135,10 +133,7 @@ class BaseFusionModel(torch.nn.Module):
         x = self.zero_impute(x)
         if self.training and self.p_multimodal_dropout > 0.0:
             x = self.multimodal_dropout(x)
-        #print(x.shape)
-        #print(self.fusion) 
         fused = self.fusion(x)
-        #print(fused.shape)
         if "late" in self.fusion_method:
             return fused
         else:
@@ -574,9 +569,6 @@ class Salmon(torch.nn.Module):
         self.activation = activation
         self.p_dropout = p_dropout
         self.modality_hidden_layer_sizes = modality_hidden_layer_sizes
-
-        #print(len(blocks))
-        #print(blocks)
         self.modality_encoders = torch.nn.ModuleList(
             [
                 EncoderSalmon(
@@ -588,8 +580,6 @@ class Salmon(torch.nn.Module):
                 for i in range(len(blocks[:-1]))
             ]
         )
-        #print(f"Blocks[-1]: {blocks[-1]}")
-        #print(f"Mod: {sum(modality_hidden_layer_sizes)}")
         self.log_hazard = HazardRegression(
             input_dimension=(sum(modality_hidden_layer_sizes) + len(blocks[-1])),
             output_size=1,
@@ -617,5 +607,5 @@ SKORCH_MODULE_FACTORY = {
     "discrete_time_sgl": DiscreteNeuralSGL,
     "survival_net": SurvivalNet,
     "gdp": GDP,
-    "salmon": Salmon
+    "salmon": Salmon,
 }

@@ -11,12 +11,12 @@ import pandas as pd
 import torch
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import VarianceThreshold
-from sklearn.metrics import make_scorer
-from sklearn.model_selection import RandomizedSearchCV, train_test_split
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, StandardScaler
+from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 from sklearn.utils import parallel_backend
 from sksurv.linear_model.coxph import BreslowEstimator
+
 from survboard.CustOmics.src.network.customics import CustOMICS
 from survboard.CustOmics.src.tools.prepare_dataset import prepare_dataset
 from survboard.CustOmics.src.tools.utils import get_sub_omics_df
@@ -194,13 +194,6 @@ def main(project: str, cancer: str):
                             omics_df[omic_source].shape[1]
                             for omic_source in omics_df.keys()
                         ]
-                        # print(omics_df["gex"])
-                        # raise ValueError
-                        # print(x_dim)
-                        # print(data_finalized.head())
-                        # print(data_finalized.shape)
-                        # print(np.sum(np.isnan(data_finalized)))
-                        # raise ValueError
 
                         batch_size = 32
                         n_epochs = 20
@@ -246,7 +239,6 @@ def main(project: str, cancer: str):
                             "dropout": dropout,
                         }
                         for i, source in enumerate(sources):
-                            # print(source)
                             source_params[source] = {
                                 "input_dim": x_dim[i],
                                 "hidden_dim": hidden_dim,
@@ -264,7 +256,6 @@ def main(project: str, cancer: str):
                             train_params=train_params,
                             device=device,
                         ).to(device)
-                        # print("Number of Parameters: ", model.get_number_parameters())
                         model.fit(
                             omics_train=omics_train,
                             clinical_df=clinical_df,
@@ -276,7 +267,6 @@ def main(project: str, cancer: str):
                             n_epochs=n_epochs,
                             verbose=True,
                         )
-                        # raise ValueError
                         metric = model.evaluate(
                             omics_test=omics_test,
                             clinical_df=clinical_df,

@@ -1,31 +1,21 @@
-.libPaths(c("/cluster/customapps/biomed/boeva/dwissel/4.2", .libPaths()))
 suppressPackageStartupMessages({
-  # library(survminer)
-
   library(compound.Cox)
   library(keras)
   library(fastDummies)
-
-
   library(dplyr)
   library(survival)
   library(purrr)
-
   library(glmnet)
-
-
   library(tibble)
   library(coefplot)
   library(vroom)
   library(readr)
-
   source(here::here("survboard", "R", "utils", "utils.R"))
 })
 
 set.seed(42)
 
 clamp <- function(x, a, b) pmax(a, pmin(x, b))
-
 
 config <- rjson::fromJSON(
   file = here::here("config", "config.json")
@@ -74,7 +64,6 @@ uni.selection_fixed <- function(t.vec, d.vec, X.mat, P.value = 0.001, K = 10, sc
     w <- Beta
   }
   CC <- X.cut %*% w
-  # browser()
   c.index0 <- 1 - concordance(Surv(t.vec, d.vec) ~ CC)$concordance
   atr_t <- (matrix(t.vec, n, n, byrow = TRUE) >= matrix(
     t.vec,
@@ -131,7 +120,6 @@ uni.selection_fixed <- function(t.vec, d.vec, X.mat, P.value = 0.001, K = 10, sc
     CC.CV_k <- X.cut[-fold_k, mask] %*% as.matrix(w_CV[mask])
     res_CV_k <- coxph(Surv(t_k, d_k) ~ CC.CV_k)
     RCVL2 <- RCVL2 + l.func(res_CV_k$coef) - res_CV_k$loglik[2]
-    # browser()
     res_kk <- coxph(Surv(t_k, d_k) ~ CC_kk[-fold_k])
     l_kk.func <- function(g) {
       l <- sum((CC_kk * g)[d.vec == 1]) - sum((log(atr_t %*%
@@ -205,7 +193,6 @@ corrupt_with_ones <- function(x) {
 }
 
 denoising_zeros_func <- function(train_data, test_data, num_features) {
-  # print(test_data[1:5, 1:5])
   inputs_currupted_ones <- train_data %>%
     as.data.frame() %>%
     purrr::map_df(corrupt_with_ones)
@@ -228,34 +215,14 @@ denoising_zeros_func <- function(train_data, test_data, num_features) {
     callbacks = list(early_stop)
   )
 
-  # print("DONE")
   intermediate_layer_model1 <- keras_model(inputs = model1$input, outputs = get_layer(model1, "BottleNeck")$output)
   denoising_zeros_list <- list(
     predict(intermediate_layer_model1, inputs_currupted_ones),
     predict(intermediate_layer_model1, test_data)
   )
-  # print(predict(intermediate_layer_model1, inputs_currupted_ones)[1:5, 1:5])
-  # print(predict(intermediate_layer_model1, as.matrix(test_data))[1:5, 1:5])
-
-  # print(class(inputs_currupted_ones))
-  # print(class(test_data))
-
-  # print(inputs_currupted_ones[1:5, 1:5])
-  # print(test_data[1:5, 1:5])
-
-
 
   train_RMSE <- evaluate(model1, features, inputs_currupted_ones)
-  # print("DONE EVAL TRAIN")
-
   test_RMSE <- evaluate(model1, test_data, test_data)
-  # print("DONE EVAL TEST")
-
-  # print(train_RMSE)
-  # print(test_RMSE)
-
-
-  # stop("")
   return(denoising_zeros_list)
 }
 
@@ -264,31 +231,15 @@ elastic_net_func <- function(train_data, test_data, time, status) {
     alpha = 0.5,
     family = "cox", type.measure = "C"
   )
-
-
   colnames(train_data) <- paste0("V", 1:ncol(train_data))
   colnames(test_data) <- colnames(train_data)
-  # print(sample(colnames(train_data), 10))
-  # print(train_data[1:5, 1:5])
-  # print(test_data[1:5, 1:5])
-
   tmp <- coefplot::extract.coef(cv.fit)
   coefficients <- tmp[, 1]
   names(coefficients) <- rownames(tmp)
-  # print(coefficients)
-  # print(length(coefficients))
   cox_helper <- transform_cox_model(coefficients, train_data, Surv(time, status))
-  # print("Made cox helper")
   newdata <- data.frame(test_data)[, colnames(test_data) %in% names(coefficients), drop = FALSE]
-  # print("Made new data")
-  # print(cox_helper)
-  # print(newdata[1:5, 1:5])
-  # print(cox_helper$y)
-  # sessionInfo()
-
   surv <- data.frame(pec::predictSurvProb(cox_helper, newdata, sort(unique(cox_helper$y[, 1]))))
   colnames(surv) <- sort(unique(cox_helper$y[, 1]))
-  # print("Made pec")
   return(surv)
 }
 
@@ -298,7 +249,6 @@ linear_featureselection_func <- function(train_data, test_data, time, survival, 
     t.vec = time, d.vec = survival, X.mat = train_data,
     P.value = 0.8, randomize = TRUE, K = 5
   )
-  # browser()
   associat$P <- associat$P[1:min(num_features, length(associat$P))]
   col_filtered <- rownames(as.data.frame(associat$P))
 
@@ -316,12 +266,10 @@ for (project in c(options[1])) {
   for (cancer in c(options[2])) {
     set.seed(42)
     # Read in complete modality sample dataset.
-    target_dir <- paste0("/cluster/work/boeva/dwissel/cr/survboard/results_reproduced/survival_functions/full/", project, "/", cancer, "/", "multimodal_nsclc")
+    target_dir <- paste0("results_reproduced/survival_functions/full/", project, "/", cancer, "/", "multimodal_nsclc")
     if (!dir.exists(target_dir)) {
-      # print(target_dir)
       dir.create(target_dir)
     }
-    # print(target_dir)
     data <- vroom::vroom(
       here::here(
         "data_reproduced", project,
@@ -337,12 +285,8 @@ for (project in c(options[1])) {
     test_splits <- lapply(1:(config$outer_repetitions * config$outer_splits), function(x) get_splits(cancer = cancer, project = project, n_samples = nrow(data), split_number = x, setting = "standard")[["test_ix"]])
 
     for (split in 1:25) {
-      # print(paste0("Split: ", split))
       train_ix <- train_splits[[split]]
       test_ix <- test_splits[[split]]
-
-      # train_data <- (data[train_ix, -c(which("OS" == colnames(data)), which("OS_days" == colnames(data)))])
-      # test_data <- (data[test_ix, -c(which("OS" == colnames(data)), which("OS_days" == colnames(data)))])
 
       combined_data <- dummy_cols(data[, -c(which("OS" == colnames(data)), which("OS_days" == colnames(data)))], remove_first_dummy = TRUE, remove_selected_columns = TRUE)
       train_data <- (combined_data[train_ix, ])
@@ -357,7 +301,6 @@ for (project in c(options[1])) {
 
       modalities <- unique(sapply(strsplit(colnames(train_data), "\\_"), function(x) x[[1]]))
       for (modality in c("gex", "clinical", "mirna", "meth", "rppa", "mut", "cnv")) {
-        # print(modality)
         if (modality == "gex" & "gex" %in% modalities) {
           mod_train <- train_data[, which(sapply(strsplit(colnames(train_data), "\\_"), function(x) x[[1]]) == modality)]
           mod_test <- test_data[, which(sapply(strsplit(colnames(test_data), "\\_"), function(x) x[[1]]) == modality)]
@@ -425,15 +368,10 @@ for (project in c(options[1])) {
           transformed_matrix_test <- cbind(transformed_matrix_test, tmp[[2]])
         }
       }
-
-      # print("Starting AE")
       ae_projections <- denoising_zeros_func(transformed_matrix_train, transformed_matrix_test, fullAE_features)
       ae_projections_train <- ae_projections[[1]]
       ae_projections_test <- ae_projections[[2]]
-
-      # print("Starting EN")
       survival_function <- elastic_net_func(ae_projections_train, ae_projections_test, train_label$OS_days, train_label$OS)
-      # print("Starting writing survival function")
       survival_function %>% write_csv(
         here::here(
           "results_reproduced", "survival_functions", "full", project, cancer, "multimodal_nsclc", paste0("split_", split, ".csv")

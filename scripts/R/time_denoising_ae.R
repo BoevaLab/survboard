@@ -2,20 +2,14 @@ log <- file(snakemake@log[[1]], open = "wt")
 sink(log, type = "output")
 sink(log, type = "message")
 
-.libPaths(c("/cluster/customapps/biomed/boeva/dwissel/4.2", .libPaths()))
 suppressPackageStartupMessages({
   library(compound.Cox)
   library(keras)
   library(fastDummies)
-
-
   library(dplyr)
   library(survival)
   library(purrr)
-
   library(glmnet)
-
-
   library(tibble)
   library(coefplot)
   library(vroom)
@@ -76,7 +70,6 @@ uni.selection_fixed <- function(t.vec, d.vec, X.mat, P.value = 0.001, K = 10, sc
     w <- Beta
   }
   CC <- X.cut %*% w
-  # browser()
   c.index0 <- 1 - concordance(Surv(t.vec, d.vec) ~ CC)$concordance
   atr_t <- (matrix(t.vec, n, n, byrow = TRUE) >= matrix(
     t.vec,
@@ -133,7 +126,6 @@ uni.selection_fixed <- function(t.vec, d.vec, X.mat, P.value = 0.001, K = 10, sc
     CC.CV_k <- X.cut[-fold_k, mask] %*% as.matrix(w_CV[mask])
     res_CV_k <- coxph(Surv(t_k, d_k) ~ CC.CV_k)
     RCVL2 <- RCVL2 + l.func(res_CV_k$coef) - res_CV_k$loglik[2]
-    # browser()
     res_kk <- coxph(Surv(t_k, d_k) ~ CC_kk[-fold_k])
     l_kk.func <- function(g) {
       l <- sum((CC_kk * g)[d.vec == 1]) - sum((log(atr_t %*%
@@ -209,7 +201,6 @@ corrupt_with_ones <- function(x) {
 }
 
 denoising_zeros_func <- function(train_data, test_data, num_features) {
-  # print(test_data[1:5, 1:5])
   inputs_currupted_ones <- train_data %>%
     as.data.frame() %>%
     purrr::map_df(corrupt_with_ones)
@@ -234,27 +225,7 @@ denoising_zeros_func <- function(train_data, test_data, num_features) {
   denoising_zeros_list <- list(
     predict(intermediate_layer_model1, inputs_currupted_ones)
   )
-  # print(predict(intermediate_layer_model1, inputs_currupted_ones)[1:5, 1:5])
-  # print(predict(intermediate_layer_model1, as.matrix(test_data))[1:5, 1:5])
-
-  # print(class(inputs_currupted_ones))
-  # print(class(test_data))
-
-  # print(inputs_currupted_ones[1:5, 1:5])
-  # print(test_data[1:5, 1:5])
-
-
-
   train_RMSE <- evaluate(model1, features, inputs_currupted_ones)
-  # print("DONE EVAL TRAIN")
-
-  # print("DONE EVAL TEST")
-
-  # print(train_RMSE)
-  # print(test_RMSE)
-
-
-  # stop("")
   return(denoising_zeros_list)
 }
 
@@ -264,17 +235,10 @@ elastic_net_func <- function(train_data, test_data, time, status) {
     family = "cox", type.measure = "C"
   )
 
-
   colnames(train_data) <- paste0("V", 1:ncol(train_data))
-  # print(sample(colnames(train_data), 10))
-  # print(train_data[1:5, 1:5])
-  # print(test_data[1:5, 1:5])
-
   tmp <- coefplot::extract.coef(cv.fit)
   coefficients <- tmp[, 1]
   names(coefficients) <- rownames(tmp)
-  # print(coefficients)
-  # print(length(coefficients))
   cox_helper <- transform_cox_model(coefficients, train_data, Surv(time, status))
   return(NULL)
 }
@@ -285,7 +249,6 @@ linear_featureselection_func <- function(train_data, test_data, time, survival, 
     t.vec = time, d.vec = survival, X.mat = train_data,
     P.value = 0.8, randomize = TRUE, K = 5
   )
-  # browser()
   associat$P <- associat$P[1:min(num_features, length(associat$P))]
   col_filtered <- rownames(as.data.frame(associat$P))
 

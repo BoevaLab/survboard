@@ -15,9 +15,9 @@ from sklearn.metrics import make_scorer
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.utils import parallel_backend
 from skorch.callbacks import EarlyStopping
 from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.skorch_infra import FixSeed
 from survboard.python.utils.factories import (
@@ -33,7 +33,6 @@ from survboard.python.utils.misc_utils import (
     get_cumulative_hazard_function_eh,
     seed_torch,
     transform,
-    transform_discrete_time,
 )
 
 parser = argparse.ArgumentParser()
@@ -146,10 +145,7 @@ def main(project: str, cancer: str, split: int):
                         [
                             (
                                 "numerical",
-                                make_pipeline(
-                                    # VarianceThreshold(threshold=0.01),
-                                    StandardScaler()
-                                ),
+                                make_pipeline(StandardScaler()),
                                 np.where(data_overall_vars.dtypes != "object")[0],
                             ),
                             (
@@ -221,8 +217,6 @@ def main(project: str, cancer: str, split: int):
                         X_train = X_train.drop(columns=["OS", "OS_days"])
                         X_test = X_test.drop(columns=["OS", "OS_days"])
 
-                        # print(X_train.shape)
-
                         y_train = transform(time_train, event_train)
 
                         if fusion == "early":
@@ -269,10 +263,6 @@ def main(project: str, cancer: str, split: int):
                             }
                         )
                         hyperparams = HYPERPARAM_FACTORY["survival_net_tuned"].copy()
-                        # hyperparams.update(HYPERPARAM_FACTORY["survival_net_tuned"])
-                        # print(hyperparams)
-                        # net.initialize()
-                        # print(net.module_)
                         grid = RandomizedSearchCV(
                             net,
                             hyperparams,
@@ -290,7 +280,6 @@ def main(project: str, cancer: str, split: int):
                             verbose=0,
                             n_iter=50,
                             random_state=42,
-                            # pre_dispatch=15
                         )
 
                         try:
@@ -300,9 +289,6 @@ def main(project: str, cancer: str, split: int):
                             raise e
                             success = False
                         if model_type == "survival_net" and success:
-                            # hm = grid.best_estimator_.predict(X_test.to_numpy().astype(np.float32))
-                            # print(hm)
-                            # raise ValueError
                             survival_functions = (
                                 grid.best_estimator_.predict_survival_function(
                                     X_test.to_numpy().astype(np.float32)

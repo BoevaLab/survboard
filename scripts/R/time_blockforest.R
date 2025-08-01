@@ -2,7 +2,6 @@ log <- file(snakemake@log[[1]], open = "wt")
 sink(log, type = "output")
 sink(log, type = "message")
 
-.libPaths(c("/cluster/customapps/biomed/boeva/dwissel/4.2", .libPaths()))
 suppressPackageStartupMessages({
   library(mlr3)
   library(mlr3pipelines)
@@ -43,7 +42,6 @@ learners <- pipe %>>% impute_missing_prediction %>>% po("learner",
   id = "blockforest",
   learner = lrn("surv.blockforest",
     encapsulate = c(train = "evaluate", predict = "evaluate"),
-    # fallback = lrn("surv.kaplan"),
     block.method = "BlockForest",
     num.trees = 2000, mtry = NULL, nsets = 300, num.trees.pre = 100, splitrule = "extratrees", always.select.block = 0,
     respect.unordered.factors = "order"

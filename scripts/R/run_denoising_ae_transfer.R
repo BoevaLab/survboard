@@ -1,24 +1,15 @@
-.libPaths(c("/cluster/customapps/biomed/boeva/dwissel/4.2", .libPaths()))
 suppressPackageStartupMessages({
-  # library(survminer)
-
   library(compound.Cox)
   library(keras)
-
-
   library(dplyr)
   library(survival)
   library(purrr)
-
   library(glmnet)
-
-
   library(tibble)
   library(coefplot)
   library(vroom)
   library(readr)
   library(fastDummies)
-
   source(here::here("survboard", "R", "utils", "utils.R"))
 })
 
@@ -92,27 +83,13 @@ elastic_net_func <- function(train_data, test_data, time, status) {
   
   colnames(train_data) <- paste0("V", 1:ncol(train_data))
   colnames(test_data) <- colnames(train_data)
-  # print(sample(colnames(train_data), 10))
-  #print(train_data[1:5, 1:5])
-  #print(test_data[1:5, 1:5])
-  
   tmp <- coefplot::extract.coef(cv.fit)
   coefficients <- tmp[, 1]
   names(coefficients) <- rownames(tmp)
-  #print(coefficients)
-  #print(length(coefficients))
   cox_helper <- transform_cox_model(coefficients, train_data, Surv(time, status))
-  #print("Made cox helper")
   newdata <- data.frame(test_data)[, colnames(test_data) %in% names(coefficients), drop = FALSE]
-  #print("Made new data")
-  #print(cox_helper)
-  #print(newdata[1:5, 1:5])
-  #print(cox_helper$y)
-  #sessionInfo()
-  
   surv <- data.frame(pec::predictSurvProb(cox_helper, newdata, sort(unique(cox_helper$y[, 1]))))
   colnames(surv) <- sort(unique(cox_helper$y[, 1]))
-  #print("Made pec")
   return(surv)
 }
 
@@ -153,7 +130,6 @@ uni.selection_fixed <- function(t.vec, d.vec, X.mat, P.value = 0.001, K = 10, sc
     w <- Beta
   }
   CC <- X.cut %*% w
-  # browser()
   c.index0 <- 1 - concordance(Surv(t.vec, d.vec) ~ CC)$concordance
   atr_t <- (matrix(t.vec, n, n, byrow = TRUE) >= matrix(
     t.vec,
@@ -210,7 +186,6 @@ uni.selection_fixed <- function(t.vec, d.vec, X.mat, P.value = 0.001, K = 10, sc
     CC.CV_k <- X.cut[-fold_k, mask] %*% as.matrix(w_CV[mask])
     res_CV_k <- coxph(Surv(t_k, d_k) ~ CC.CV_k)
     RCVL2 <- RCVL2 + l.func(res_CV_k$coef) - res_CV_k$loglik[2]
-    #browser()
     res_kk <- coxph(Surv(t_k, d_k) ~ CC_kk[-fold_k])
     l_kk.func <- function(g) {
       l <- sum((CC_kk * g)[d.vec == 1]) - sum((log(atr_t %*%
@@ -276,7 +251,6 @@ linear_featureselection_func <- function(train_data, test_data, time, survival, 
     t.vec = time, d.vec = survival, X.mat = train_data,
     P.value = 0.8, randomize = TRUE, K = 5
   )
-  # browser()
   associat$P <- associat$P[1:min(num_features, length(associat$P))]
   col_filtered <- rownames(as.data.frame(associat$P))
   
@@ -291,9 +265,8 @@ linear_featureselection_func <- function(train_data, test_data, time, survival, 
 for (project in c("validation")) {
   for (cancer in c("PAAD", "LIHC")) {
     set.seed(42)
-    target_dir <- paste0("/cluster/work/boeva/dwissel/cr/survboard/results_reproduced/survival_functions/transfer/", "validation", "/", cancer, "/", "multimodal_nsclc")
+    target_dir <- paste0("results_reproduced/survival_functions/transfer/", "validation", "/", cancer, "/", "multimodal_nsclc")
     if (!dir.exists(target_dir)) {
-      #print(target_dir)
       dir.create(target_dir)
     }
     if (cancer == "PAAD") {
@@ -361,13 +334,9 @@ for (project in c("validation")) {
       test_data <- test_data[, !zero_variance_mask]
 
       train_label <- data_input[train_ix, c(which("OS" == colnames(data_input)), which("OS_days" == colnames(data_input)))]
-      
-      #print(dim(train_data))
-      #print(dim(test_data))
 
       modalities <- unique(sapply(strsplit(colnames(train_data), "\\_"), function(x) x[[1]]))
       for (modality in c("gex", "clinical")) {
-        #print(modality)
         if (modality == "gex" & "gex" %in% modalities) {
           mod_train <- train_data[, which(sapply(strsplit(colnames(train_data), "\\_"), function(x) x[[1]]) == modality)]
           mod_test <- test_data[, which(sapply(strsplit(colnames(test_data), "\\_"), function(x) x[[1]]) == modality)]

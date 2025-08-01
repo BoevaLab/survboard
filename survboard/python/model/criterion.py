@@ -1,4 +1,5 @@
 import torch
+
 from survboard.python.utils.misc_utils import (
     eh_loss,
     negative_partial_log_likelihood,
@@ -43,17 +44,6 @@ class cox_ph_criterion_sgl(torch.nn.Module):
     def forward(self, predicted, target, alpha, lamb, weights, groups):
         if isinstance(predicted, tuple) and len(predicted > 1):
             predicted = predicted[0]
-        print(
-            negative_partial_log_likelihood(
-                predicted,
-                target[:, 0],
-                target[:, 1],
-            )
-        )
-        print(f"Lambd: {lamb}")
-        print(f"Alpha: {alpha}")
-        print(target[:, 1])
-        raise ValueError
         return negative_partial_log_likelihood(
             predicted,
             target[:, 0],

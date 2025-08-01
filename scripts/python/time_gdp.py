@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import pathlib
@@ -15,9 +14,8 @@ from sklearn.metrics import make_scorer
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.utils import parallel_backend
 from skorch.callbacks import EarlyStopping
-from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.skorch_infra import FixSeed
 from survboard.python.utils.factories import (
@@ -26,14 +24,12 @@ from survboard.python.utils.factories import (
     LOSS_FACTORY,
     SKORCH_NET_FACTORY,
 )
-from survboard.python.utils.misc_utils import (  # get_blocks_gdp,
+from survboard.python.utils.misc_utils import (
     StratifiedSkorchSurvivalSplit,
     StratifiedSurvivalKFold,
     get_blocks,
-    get_cumulative_hazard_function_eh,
     seed_torch,
     transform,
-    transform_discrete_time,
 )
 
 
@@ -121,10 +117,7 @@ with open(snakemake.log[0], "w") as f:
                         [
                             (
                                 "numerical",
-                                make_pipeline(
-                                    # VarianceThreshold(threshold=0.01),
-                                    StandardScaler()
-                                ),
+                                make_pipeline(StandardScaler()),
                                 np.where(data_overall_vars.dtypes != "object")[0],
                             ),
                             (
@@ -190,12 +183,6 @@ with open(snakemake.log[0], "w") as f:
                     net.set_params(
                         **HYPERPARAM_FACTORY["common_fixed_gdp"],
                     )
-                    # net.initialize()
-                    # pytorch_total_params = sum(p.numel() for p in net.module_.parameters())
-                    # print(net.module_)
-                    # print(pytorch_total_params)
-                    # print(X_train.shape)
-                    # raise ValueError
 
                     net.set_params(
                         **{
@@ -218,8 +205,7 @@ with open(snakemake.log[0], "w") as f:
                         }
                     )
                     hyperparams = HYPERPARAM_FACTORY["gdp_tuned"].copy()
-                    # hyperparams.update(HYPERPARAM_FACTORY["gdp_tuned"])
-                    # print(hyperparams)
+
                     grid = RandomizedSearchCV(
                         net,
                         hyperparams,
@@ -237,10 +223,8 @@ with open(snakemake.log[0], "w") as f:
                         verbose=0,
                         n_iter=50,
                         random_state=42,
-                        # pre_dispatch=15
                     )
 
-                    # with parallel_backend(backend="threading", n_jobs=15):
                     grid.fit(X_train.to_numpy().astype(np.float32), y_train)
                     pathlib.Path(
                         f"results_reproduced/timings/gdp_{snakemake.wildcards['cancer']}"

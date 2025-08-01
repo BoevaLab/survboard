@@ -10,13 +10,13 @@ import numpy as np
 import pandas as pd
 import torch
 from sklearn.compose import ColumnTransformer
-from sklearn.feature_selection import VarianceThreshold
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from skorch.callbacks import EarlyStopping
 from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.skorch_infra import FixSeed
 from survboard.python.utils.factories import (
@@ -289,38 +289,23 @@ def main(project: str, cancer: str, split: int):
                                 [survival_km for i in range(X_test.shape[0])]
                             )
                             sf_df.columns = time_km
-                        # Add metadata columns to the sf_df to identify its origin
                         sf_df["model_type"] = model_type
                         sf_df["modality"] = modality
                         sf_df["project"] = project
                         sf_df["cancer"] = cancer
                         sf_df["split"] = outer_split
 
-                        # Append the DataFrame to our list for later consolidation
                         all_sf_dfs_for_task.append(sf_df)
-                # pathlib.Path(
-                #     f"./results_reproduced/survival_functions/{modality}/{project}/{cancer}/{model_type}_{fusion}/"
-                # ).mkdir(parents=True, exist_ok=True)
 
-                # sf_df.to_csv(
-                #     f"./results_reproduced/survival_functions/{modality}/{project}/{cancer}/{model_type}_{fusion}/split_{outer_split}.csv",
-                #     index=False,
-                # )
-
-    if all_sf_dfs_for_task:  # Ensure the list is not empty
+    if all_sf_dfs_for_task:
         consolidated_sf_df = pd.concat(all_sf_dfs_for_task, ignore_index=True)
 
-        # Define the output directory and filename for the consolidated CSV file
-        # The path now only needs to be unique per project/cancer/split
         output_dir = pathlib.Path(
             f"./results_reproduced/survival_functions_consolidated_csv/{project}/{cancer}/unimodal"
         )
-        output_dir.mkdir(parents=True, exist_ok=True)  # Ensure the directory exists
-
-        # Save the consolidated DataFrame as a CSV file
-        # The filename now includes the split, project, and cancer, making it unique per job
+        output_dir.mkdir(parents=True, exist_ok=True)
         output_file_path = output_dir / f"split_{split}.csv"
-        consolidated_sf_df.to_csv(output_file_path, index=False)  # Changed to .to_csv
+        consolidated_sf_df.to_csv(output_file_path, index=False)
         print(
             f"Saved consolidated results for {project}/{cancer}/split_{split} to {output_file_path}"
         )

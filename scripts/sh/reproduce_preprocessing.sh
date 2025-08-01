@@ -9,3 +9,4 @@ Rscript ./scripts/R/create_pancancer_data.R
 Rscript ./scripts/R/extract_pancancer_master.R
 Rscript ./scripts/R/extract_pancancer_splits.R
 Rscript ./scripts/R/extract_master.R
+Rscript ./scripts/R/make_transfer_data.R

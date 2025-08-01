@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import pathlib
@@ -15,7 +14,7 @@ from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from skorch.callbacks import EarlyStopping
-from sksurv.nonparametric import kaplan_meier_estimator
+
 from survboard.python.model.model import SKORCH_MODULE_FACTORY
 from survboard.python.model.skorch_infra import FixSeed
 from survboard.python.utils.factories import (
@@ -28,7 +27,6 @@ from survboard.python.utils.misc_utils import (
     StratifiedSkorchSurvivalSplit,
     StratifiedSurvivalKFold,
     get_blocks,
-    get_cumulative_hazard_function_eh,
     seed_torch,
     transform,
     transform_discrete_time,

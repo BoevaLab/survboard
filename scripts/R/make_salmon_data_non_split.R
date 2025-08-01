@@ -1,7 +1,3 @@
-log <- file(snakemake@log[[1]], open = "wt")
-sink(log, type = "output")
-sink(log, type = "message")
-
 suppressPackageStartupMessages({
   library(lmQCM)
   library(vroom)
@@ -27,7 +23,7 @@ transform_matrix_salmon <- function(data) {
       mod <- data[, which(sapply(strsplit(colnames(data), "\\_"), function(x) x[[1]]) == modality)]
       mod_ready <- t(mod)
 
-      mod_ready_filtered <- fastFilter(mod_ready, 0.2, 0.2)
+      mod_ready_filtered <- fastFilter(mod_ready, 0.6, 0.6)
 
 
       mod_finished <- lmQCM(
@@ -115,11 +111,12 @@ transform_matrix_salmon <- function(data) {
   return(transformed_matrix)
 }
 
+
+
 options <- commandArgs(trailingOnly = TRUE)
 
-for (project in c("TCGA")) {
-  for (cancer in c(snakemake@wildcards[["cancer"]])) {
-    set.seed(42)
+for (project in c(options[1])) {
+  for (cancer in c(options[2])) {
     # Read in complete modality sample dataset.
     data <- vroom::vroom(
       here::here(
@@ -130,23 +127,22 @@ for (project in c("TCGA")) {
     # Remove patient_id column and explicitly cast character columns as strings.
     data <- data.frame(data[, -which("patient_id" == colnames(data))]) %>%
       mutate(across(where(is.character), as.factor))
-
-    modalities <- sapply(strsplit(colnames(data), "\\_"), function(x) x[[1]])
-    data <- data[, modalities %in% c("OS", "clinical", "gex")]
-
+    
     label <- data[, c(which("OS" == colnames(data)), which("OS_days" == colnames(data)))]
     data <- data[, -c(which("OS" == colnames(data)), which("OS_days" == colnames(data)))]
-
+    
+    
     transformed_data <- transform_matrix_salmon(data)
     finalized <- cbind(label, transformed_data)
-
-    write.table(data.frame(), file = here::here(
-      "results_reproduced", "timings", paste0("make_salmon_data_", snakemake@wildcards[["cancer"]])
-    ), col.names = FALSE)
+    
+    finalized %>% write_tsv(
+      here::here(
+        "data_reproduced", project,
+        paste0(cancer, "_salmon_preprocessed.csv", collapse = "")
+      )
+    )
+   
   }
 }
 
 sessionInfo()
-
-sink()
-sink()

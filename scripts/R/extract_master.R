@@ -1,4 +1,3 @@
-# .libPaths(c("/cluster/customapps/biomed/boeva/dwissel/4.2", .libPaths()))
 suppressPackageStartupMessages({
   library(vroom)
   library(rjson)
@@ -7,8 +6,7 @@ suppressPackageStartupMessages({
 })
 
 config <- rjson::fromJSON(
-  #file = here::here("config", "config.json")
-  file = "/Volumes/Backup/cr/survboard_revisions/config/config.json"
+  file = here::here("config", "config.json")
 )
 
 # Seeding for reproducibility.
@@ -20,15 +18,18 @@ for (project in c("METABRIC", "TCGA", "ICGC", "TARGET")) {
     set.seed(42)
     # Read in complete modality sample dataset.
     data <- vroom::vroom(
-      # here::here(
-      #  "data_reproduced", project,
-      #  paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
-      # )
-      paste0("/Volumes/Backup/cr/survboard_revisions/final_revision/data_reproduced/", project, "/", paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = ""), collapse = "")
+      here::here(
+        "data_reproduced", project,
+        paste0(cancer, "_data_complete_modalities_preprocessed.csv", collapse = "")
+      )
     )
     master <- data.frame(data[, c(which("OS" == colnames(data)), which("OS_days" == colnames(data)))])
     master %>% write_csv(
-      paste0("/Volumes/Backup/cr/survboard_revisions/final_revision/data_reproduced/", project, "/", paste0(cancer, "_master.csv", collapse = ""), collapse = "")
+      here::here(
+        "data_reproduced", project,
+        paste0(cancer, "_master.csv", collapse = "")
+
+      )
     )
   }
 }
